@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SpeakCards</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="icon" href="LOGO.ico" type="image/x-icon">
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body>
+    <div id="appContainer" style="display: none;">
+        <div id="top-bar-placeholder"></div> <!-- Existing placeholder for top bar -->
+        <!-- <div id="customWordManagementContainer" class="custom-word-management"></div> -->
+        <div id="flashcardGridMessage" class="flashcard-grid-message" style="display: none;">
+            <!-- Messages like "No words in this category" or "No custom words" -->
+        </div>
+        <div class="flashcard-grid" id="flashcardGrid">
+            <!-- Flashcards will be rendered here -->
+        </div>
+    </div>    <script src="words.js"></script>
+    <script src="tts-config.js"></script>
+    <script src="tts-cache.js"></script>
+    <script src="tts-manager.js"></script>
+    <script src="main.js"></script>
+    
+    <!-- 添加移动设备元标签以改善响应式设计 -->
+    <script>
+        // 检查设备并添加适当的类
+        document.addEventListener('DOMContentLoaded', function() {
+            // 添加响应式类
+            if (window.innerWidth <= 768) {
+                document.body.classList.add('mobile-device');
+            }
+            
+            // 监听窗口调整大小事件
+            window.addEventListener('resize', function() {
+                if (window.innerWidth <= 768) {
+                    document.body.classList.add('mobile-device');
+                } else {
+                    document.body.classList.remove('mobile-device');
+                }
+            });
+        });
+    </script>
+</body>
+</html>

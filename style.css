@@ -1,0 +1,316 @@
+body {
+    font-family: 'Inter', 'PingFang SC', 'Microsoft YaHei', Arial, sans-serif;
+    background: url('https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1500&q=80') no-repeat center center fixed !important;
+    background-size: cover !important;
+    min-height: 100vh;
+    margin: 0;
+    padding: 0;
+    position: relative;
+}
+
+body::before {
+    content: '';
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(255,255,255,0.75);
+    z-index: 0;
+    pointer-events: none;
+}
+
+.flashcard-grid {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 16px;
+  margin: 24px auto 0 auto;
+  max-width: 1200px;
+}
+
+.flashcard-container {
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  width: 220px;
+  min-height: 140px;
+  margin: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transition: box-shadow 0.2s;
+  position: relative;
+}
+.flashcard-container:hover {
+  box-shadow: 0 4px 16px rgba(0,0,0,0.16);
+}
+
+.flashcard-container.is-mastered {
+  border-left: 7px solid #28a745 !important;
+  box-shadow: 0 0 0 2px #28a74533;
+  background-color: #f6fff8;
+  transition: border-left 0.3s, box-shadow 0.3s, background 0.3s;
+}
+
+@media (max-width: 768px) {
+  .flashcard-container.is-mastered {
+    border-left: 5px solid #28a745 !important;
+    box-shadow: 0 0 0 2px #28a74533;
+    background-color: #f6fff8;
+  }
+}
+
+.flashcard {
+    width: 100%;
+    height: 100%;
+    position: relative;
+    border-radius: 18px;
+    box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.18);
+    background: rgba(255,255,255,0.95);
+    transition: transform 0.5s cubic-bezier(.4,2,.6,1);
+    transform-style: preserve-3d;
+    cursor: pointer;
+}
+
+.flashcard.flipped {
+    transform: rotateY(180deg);
+}
+
+.flashcard-front, .flashcard-back {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    backface-visibility: hidden;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 28px 18px 18px 18px;
+    border-radius: 18px;
+    background: transparent;
+    color: #334155;
+    text-align: center;
+    box-sizing: border-box;
+    border: none;
+}
+
+.flashcard-front {
+    z-index: 2;
+    background: transparent;
+    transform: rotateY(0deg);
+}
+
+.flashcard-back {
+    z-index: 1;
+    background: rgba(236, 253, 245, 0.95);
+    color: #1e3a8a;
+    transform: rotateY(180deg);
+    display: flex; /* 这些flex用于内容居中 */
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+
+.flashcard-back * {
+    /* 确保背面子元素内容不被镜像 */
+    transform: none !important; 
+    direction: ltr;
+}
+
+.flashcard-front .word {
+    font-size: 1.3rem;
+    font-weight: bold;
+    color: #222;
+    margin-bottom: 6px;
+    white-space: nowrap;
+    overflow: visible;
+    text-overflow: unset;
+    max-width: 100%;
+    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 2.5em;
+    letter-spacing: 1px;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+.flashcard-front .pronunciation {
+    font-size: 1rem;
+    color: #888;
+    margin-bottom: 8px;
+    font-weight: 500;
+    letter-spacing: 0.5px;
+}
+
+.flashcard-back .chinese-translation {
+    font-size: min(5vw, 5rem);
+    font-weight: 700;
+    color: #0f5132;
+    letter-spacing: 1px;
+}
+
+.card-index {
+    position: absolute;
+    bottom: 12px;
+    right: 18px;
+    font-size: 1.1rem;
+    color: #b0b0b0;
+    font-weight: 600;
+    opacity: 0.8;
+    z-index: 2;
+}
+
+.top-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 8px 0 8px;
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.user-name-display {
+  font-size: 1rem;
+  margin-right: 8px;
+}
+
+/* .user-name-display 类现在是可选的，如果需要特定于用户名的样式，可以在这里添加。
+   当前的换行和间距主要由 .user-actions-container 控制。
+   例如，如果希望用户名过长时显示省略号而不是换行，可以取消注释以下规则：
+.user-name-display {
+    max-width: 150px; 
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+*/
+
+/* 移除自定义单词管理相关样式 */
+
+/* Login Screen Specific Styles */
+.login-input {
+    width: calc(100% - 22px); /* Full width minus padding and border */
+    padding: 12px 10px;
+    margin-bottom: 15px;
+    border: 1px solid #CBD5E0; /* Light gray border */
+    border-radius: 6px;
+    font-size: 1rem;
+    box-sizing: border-box;
+}
+
+.auth-button {
+    width: 100%;
+    padding: 12px 20px;
+    font-size: 1.1rem;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background-color 0.2s ease, transform 0.1s ease;
+    margin-bottom: 10px; /* Space between buttons */
+}
+
+.auth-button.simple-button {
+    background-color: #4299E1; /* Blue for primary login/register */
+    color: white;
+    border: none;
+}
+
+.auth-button.simple-button:hover {
+    background-color: #3182CE;
+}
+
+.auth-button.simple-button.secondary {
+    background-color: #A0AEC0; /* Gray for secondary action like register */
+}
+
+.auth-button.simple-button.secondary:hover {
+    background-color: #718096;
+}
+
+.auth-button:active {
+    transform: scale(0.98);
+}
+
+
+.login-button.simple-button {
+    padding: 18px 35px;
+    font-size: 1.1rem;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background-color 0.2s ease, transform 0.1s ease;
+    margin-top: 10px;
+    width: 100%;
+    border: none;
+    background-color: #2B6CB0; /* A darker blue */
+    color: white;
+}
+
+.login-button.simple-button:hover {
+    background-color: #2C5282; /* A even darker blue */
+}
+
+.login-button.simple-button:active {
+    transform: scale(0.98);
+}
+
+.register-button.simple-button {
+    padding: 18px 35px;
+    font-size: 1.1rem;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background-color 0.2s ease, transform 0.1s ease;
+    margin-top: 10px;
+    width: 100%;
+    border: none;
+    background-color: #48BB78; /* A green color */
+    color: white;
+}
+
+.register-button.simple-button:hover {
+    background-color: #38A169; /* A darker green */
+}
+
+.register-button.simple-button:active {
+    transform: scale(0.98);
+}
+
+@media (max-width: 768px) {
+    .flashcard-grid {
+        gap: 8px;
+        max-width: 100vw;
+        padding: 0 2vw;
+        justify-content: flex-start;
+    }
+    .flashcard-container {
+        width: calc(50% - 12px);
+        min-width: 140px;
+        max-width: 220px;
+        margin: 0 4px 10px 4px;
+        box-sizing: border-box;
+        display: inline-flex;
+    }
+    .flashcard-front .word {
+        font-size: 1.1rem;
+    }
+    .flashcard-front .pronunciation {
+        font-size: 0.95rem;
+    }
+    .flashcard-back {
+        font-size: 1rem;
+    }
+    .top-bar {
+        flex-wrap: wrap;
+        gap: 6px;
+        padding: 8px 2vw 0 2vw;
+    }
+}
+
+/* 防止大字体溢出 */
+body, html {
+  font-size: 16px;
+  background: #f6f8fa;
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+}
