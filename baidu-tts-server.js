@@ -24,17 +24,37 @@ async function getAccessToken() {
 
 // 合成语音
 app.post('/tts', async (req, res) => {
-    const { text, lang, per } = req.body;
+    const { text, lang, per, gender } = req.body;
     if (!text) return res.status(400).json({ error: 'text required' });
     try {
         const token = await getAccessToken();
+        
+        // 处理性别参数 - 增强兼容性
+        let voiceType = 0; // 默认女声
+        
+        // 处理各种可能的性别参数格式
+        if (per !== undefined) {
+            // 数字格式
+            voiceType = parseInt(per);
+        } else if (gender) {
+            // 字符串格式
+            if (gender === 'male' || gender === '男') {
+                voiceType = 1;  // 男声
+            } else if (gender === 'female' || gender === '女') {
+                voiceType = 0;  // 女声
+            }
+        }
+        
+        // 日志记录参数
+        console.log('[BaiduTTS] 请求参数:', { text, lang, per, gender, voiceType });
+        
         const params = new URLSearchParams({
             tex: text,
             tok: token,
             cuid: 'speakcards',
             ctp: 1,
             lan: lang || 'zh',
-            per: per || 0, // 0女 1男 3度逍遥 4度丫丫
+            per: voiceType, // 0女 1男 3度逍遥 4度丫丫
             spd: 5,
             pit: 5,
             vol: 5,
