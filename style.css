@@ -162,6 +162,7 @@ body::before {
 .top-bar {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 10px;
   padding: 10px 8px 0 8px;
   background: #f8fafc;
@@ -171,9 +172,56 @@ body::before {
   z-index: 100;
 }
 
+.user-actions-container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.user-info-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.config-container {
+  display: flex;
+  align-items: center;
+}
+
 .user-name-display {
   font-size: 1rem;
   margin-right: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+
+/* 退出登录按钮样式 */
+.logout-button {
+  background-color: #e53e3e;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.logout-button:hover {
+  background-color: #c53030;
+  transform: translateY(-1px);
+}
+
+.logout-button:active {
+  transform: translateY(0);
 }
 
 /* .user-name-display 类现在是可选的，如果需要特定于用户名的样式，可以在这里添加。
@@ -331,11 +379,37 @@ body::before {
     }
     .flashcard-back {
         font-size: 1rem;
-    }
-    .top-bar {
+    }    .top-bar {
         flex-wrap: wrap;
         gap: 6px;
         padding: 8px 2vw 0 2vw;
+    }
+    
+    .user-actions-container {
+        flex-direction: row;
+        align-items: center;
+        justify-content: space-between;
+        gap: 6px;
+        width: 100%;
+    }
+    
+    .user-info-container {
+        flex: 1;
+        justify-content: flex-start;
+    }
+      .config-container {
+        flex-shrink: 0;
+        justify-content: flex-end;
+    }
+    
+    .user-name-display {
+        max-width: 120px;
+        font-size: 0.9rem;
+    }
+    
+    .logout-button {
+        font-size: 11px;
+        padding: 4px 8px;
     }
 }
 
@@ -358,7 +432,6 @@ body, html {
   border: none;
   border-radius: 8px;
   padding: 8px 14px;
-  margin-left: auto;
   font-size: 14px;
   font-weight: 500;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);

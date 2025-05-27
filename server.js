@@ -135,6 +135,25 @@ app.post('/api/get-progress', (req, res) => {
 // 静态文件服务
 app.use(express.static(path.join(__dirname)));
 
+// 获取本机IP地址
+function getLocalIP() {
+  const os = require('os');
+  const interfaces = os.networkInterfaces();
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name]) {
+      if (iface.family === 'IPv4' && !iface.internal) {
+        return iface.address;
+      }
+    }
+  }
+  return 'localhost';
+}
+
 app.listen(3000, '0.0.0.0', () => {
-  console.log('Server running at http://0.0.0.0:3000/');
+  const localIP = getLocalIP();
+  console.log('🚀 SpeakCards服务器启动成功！');
+  console.log('📱 本地访问地址: http://localhost:3000');
+  console.log('🌐 局域网访问地址: http://' + localIP + ':3000');
+  console.log('📋 停止服务器请按: Ctrl+C');
+  console.log('-----------------------------------');
 });

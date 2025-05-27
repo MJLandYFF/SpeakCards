@@ -439,7 +439,57 @@ function showAppScreen() {
 }
 
 function updateUserDisplay() {
-    userActionsContainer.innerHTML = ''; // 清空旧内容    // 添加配置按钮
+    userActionsContainer.innerHTML = ''; // 清空旧内容
+    
+    // 创建用户信息容器（左侧）
+    const userInfoContainer = document.createElement('div');
+    userInfoContainer.className = 'user-info-container';
+    userInfoContainer.style.display = 'flex';
+    userInfoContainer.style.alignItems = 'center';
+    userInfoContainer.style.gap = '8px';
+
+    // 创建配置选项容器（右侧）
+    const configContainer = document.createElement('div');
+    configContainer.className = 'config-container';
+    configContainer.style.marginLeft = 'auto';
+
+    // 添加用户信息到左侧容器
+    if (currentUser && currentUser.id) {
+        const userNameDisplay = document.createElement('div');
+        userNameDisplay.className = 'user-name-display';
+        userNameDisplay.textContent = '用户: ' + (currentUser.displayName || currentUser.id);
+        userNameDisplay.style.color = '#4A5568';
+        userNameDisplay.style.fontWeight = '500';
+        userNameDisplay.style.cursor = 'pointer'; // Make username look clickable
+
+        userInfoContainer.appendChild(userNameDisplay);
+
+        // Logout button is initially hidden
+        const logoutButton = document.createElement('button');
+        logoutButton.textContent = '退出登录';
+        logoutButton.className = 'logout-button simple-button';
+        logoutButton.style.display = 'none'; // Initially hidden
+        logoutButton.addEventListener('click', handleLogout);
+        userInfoContainer.appendChild(logoutButton);
+
+        // Event listener for userNameDisplay to toggle logoutButton visibility
+        let logoutVisible = false;
+        userNameDisplay.addEventListener('click', (event) => {
+            event.stopPropagation(); // Prevent click from bubbling up if necessary
+            logoutVisible = !logoutVisible;
+            logoutButton.style.display = logoutVisible ? 'inline-block' : 'none';
+        });
+
+        // Optional: Clicking anywhere else on the page hides the logout button
+        document.addEventListener('click', (event) => {
+            if (logoutVisible && !userActionsContainer.contains(event.target)) {
+                logoutVisible = false;
+                logoutButton.style.display = 'none';
+            }
+        }, true); // Use capture phase to catch clicks early
+    }
+
+    // 添加配置按钮到右侧容器
     const configBtn = document.createElement('button');
     configBtn.id = 'configOptionsBtn';
     configBtn.className = 'config-button';
@@ -460,44 +510,11 @@ function updateUserDisplay() {
         }
     });
     
-    userActionsContainer.appendChild(configBtn);
+    configContainer.appendChild(configBtn);
 
-    if (currentUser && currentUser.id) {
-        const userNameDisplay = document.createElement('div');
-        userNameDisplay.className = 'user-name-display';
-        userNameDisplay.textContent = '用户: ' + (currentUser.displayName || currentUser.id);
-        userNameDisplay.style.color = '#4A5568';
-        userNameDisplay.style.fontWeight = '500';
-        userNameDisplay.style.cursor = 'pointer'; // Make username look clickable
-
-        userActionsContainer.appendChild(userNameDisplay);
-
-        // Logout button is initially hidden
-        const logoutButton = document.createElement('button');
-        logoutButton.textContent = '退出登录';
-        logoutButton.className = 'logout-button simple-button';
-        logoutButton.style.display = 'none'; // Initially hidden
-        logoutButton.addEventListener('click', handleLogout);
-        userActionsContainer.appendChild(logoutButton);
-
-        // Event listener for userNameDisplay to toggle logoutButton visibility
-        let logoutVisible = false;
-        userNameDisplay.addEventListener('click', (event) => {
-            event.stopPropagation(); // Prevent click from bubbling up if necessary
-            logoutVisible = !logoutVisible;
-            logoutButton.style.display = logoutVisible ? 'inline-block' : 'none';
-        });
-
-        // Optional: Clicking anywhere else on the page hides the logout button
-        document.addEventListener('click', (event) => {
-            if (logoutVisible && !userActionsContainer.contains(event.target)) {
-                logoutVisible = false;
-                logoutButton.style.display = 'none';
-            }
-        }, true); // Use capture phase to catch clicks early
-
-    }
-    // No 'else' needed here as the login button is on the dedicated login screen
+    // 将两个容器添加到userActionsContainer
+    userActionsContainer.appendChild(userInfoContainer);
+    userActionsContainer.appendChild(configContainer);
 }
 
 

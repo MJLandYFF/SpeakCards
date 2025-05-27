@@ -2,9 +2,11 @@
   "name": "speakcards-baidu-tts",
   "version": "1.0.0",
   "description": "英语单词卡片+百度TTS发音，前后端一体化项目",
-  "main": "server.js",
-  "scripts": {
-    "start": "node server.js"
+  "main": "server.js",  "scripts": {
+    "start": "node server.js",
+    "serve": "node server.js",
+    "dev": "node server.js",
+    "run": "node server.js"
   },
   "dependencies": {
     "axios": "^1.6.7",
