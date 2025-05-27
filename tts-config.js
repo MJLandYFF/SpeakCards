@@ -122,7 +122,7 @@ window.TTS_CONFIG = window.TTS_CONFIG || {};
 window.TTS_CONFIG.baidu = {
   apiKey: 'rxMchZBLlVQgh23U9KDdfbTD',
   secretKey: '7TAOotMxEFHmepilZPxSxMwdupf9mpSg',
-  serverUrl: 'http://localhost:3000/tts' // 本地后端服务地址
+  serverUrl: 'http://localhost:8000/tts' // 本地后端服务地址
 };
 
 // 导出配置 (如果在模块环境中使用)

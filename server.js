@@ -149,11 +149,11 @@ function getLocalIP() {
   return 'localhost';
 }
 
-app.listen(3000, '0.0.0.0', () => {
+app.listen(8000, '0.0.0.0', () => {
   const localIP = getLocalIP();
   console.log('🚀 SpeakCards服务器启动成功！');
-  console.log('📱 本地访问地址: http://localhost:3000');
-  console.log('🌐 局域网访问地址: http://' + localIP + ':3000');
+  console.log('📱 本地访问地址: http://localhost:8000');
+  console.log('🌐 局域网访问地址: http://' + localIP + ':8000');
   console.log('📋 停止服务器请按: Ctrl+C');
   console.log('-----------------------------------');
 });

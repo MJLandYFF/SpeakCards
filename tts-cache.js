@@ -363,21 +363,27 @@ const TTSWithCache = {
         await AudioCache.init();
         console.log('TTS缓存系统已初始化');
     },
-    
-    // 播放缓存音频
+      // 播放缓存音频
     async playAudioFromCache(audioBlob) {
         try {
             if (!audioBlob) return false;
             
             const audioUrl = URL.createObjectURL(audioBlob);
-            const audio = new Audio(audioUrl);
+            const audio = window.MobileAudioFix 
+                ? window.MobileAudioFix.createCompatibleAudio(audioUrl)
+                : new Audio(audioUrl);
             
             // 播放结束时释放URL
             audio.onended = () => {
                 URL.revokeObjectURL(audioUrl);
             };
             
-            await audio.play();
+            // 使用移动端兼容的播放方法
+            if (window.MobileAudioFix && window.MobileAudioFix.playAudio) {
+                await window.MobileAudioFix.playAudio(audio);
+            } else {
+                await audio.play();
+            }
             return true;
         } catch (error) {
             console.error('Error playing cached audio:', error);
@@ -549,10 +555,17 @@ const TTSWithCache = {
             if (useCache) {
                 await AudioCache.add(text, blob, lang, 'elevenlabs');
             }
+              // 播放音频
+            const audio = window.MobileAudioFix 
+                ? window.MobileAudioFix.createCompatibleAudio(URL.createObjectURL(blob))
+                : new Audio(URL.createObjectURL(blob));
             
-            // 播放音频
-            const audio = new Audio(URL.createObjectURL(blob));
-            await audio.play();
+            // 使用移动端兼容的播放方法
+            if (window.MobileAudioFix && window.MobileAudioFix.playAudio) {
+                await window.MobileAudioFix.playAudio(audio);
+            } else {
+                await audio.play();
+            }
             
             // 等待播放完成
             return new Promise((resolve) => {

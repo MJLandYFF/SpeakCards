@@ -879,7 +879,25 @@ function handleGridClick(e) {
 // 智能发音主入口，自动选择TTS方案
 async function speakText(text, lang = 'en') {
     if (!text) return;
+    
     try {
+        // 移动端音频激活检查 - 简化版本
+        if (window.MobileAudioFix && window.MobileAudioFix.isMobileDevice()) {
+            console.log('[SpeakText] 检测到移动设备，检查音频状态');
+            
+            // 如果音频未激活，提示用户
+            if (!window.MobileAudioFix.isAudioEnabled) {
+                showMessage('🎵 点击页面激活音频播放功能', 4000);
+                
+                // 尝试激活音频
+                const unlocked = await window.MobileAudioFix.unlockAudioOnDemand();
+                if (!unlocked) {
+                    showMessage('⚠️ 音频未激活，请点击页面后重试', 3000);
+                    return;
+                }
+            }
+        }
+
         let voicePref = window.selectedVoiceOption || 'default';
         let ttsLang = lang;
         if (voicePref === 'male') ttsLang = 'en-US-male';
@@ -917,15 +935,19 @@ async function speakText(text, lang = 'en') {
         if (typeof playBaiduTTS === 'function') {
             const ok = await playBaiduTTS(text, voicePref === 'male' ? 'male' : 'female', true);
             if (ok) return;
-        }
-        // 最后兜底：浏览器原生TTS
+        }        // 最后兜底：浏览器原生TTS
         if (typeof speechSynthesis !== 'undefined') {
             try {
                 const utter = new SpeechSynthesisUtterance(text);
                 utter.lang = lang === 'zh' ? 'zh-CN' : 'en-US';
                 let spoken = false;
+                
                 utter.onend = function() { spoken = true; };
-                utter.onerror = function() { spoken = false; };
+                utter.onerror = function(e) { 
+                    console.warn('SpeechSynthesis error:', e);
+                    spoken = false; 
+                };
+                
                 speechSynthesis.speak(utter);
                 await new Promise(resolve => setTimeout(resolve, 800));
                 if (spoken) return;
@@ -971,11 +993,18 @@ async function playElevenLabsTTS(text, lang = 'zh') {
         if (!response.ok) {
             return false;
         }
-        const data = await response.json();
-        if (data && data.audio) {
+        const data = await response.json();        if (data && data.audio) {
             try {
-                const audio = new Audio(data.audio);
-                await audio.play();
+                const audio = window.MobileAudioFix 
+                    ? window.MobileAudioFix.createCompatibleAudio(data.audio)
+                    : new Audio(data.audio);
+                
+                // 使用移动端兼容的播放方法
+                if (window.MobileAudioFix && window.MobileAudioFix.playAudio) {
+                    await window.MobileAudioFix.playAudio(audio);
+                } else {
+                    await audio.play();
+                }
                 return true;
             } catch (e) {
                 return false;
@@ -996,6 +1025,10 @@ async function playBaiduTTS(text, gender = 'female', useCache = true, scenario =
             showMessage('百度TTS未配置');
             return false;
         }
+        
+        // 调试日志：显示实际使用的服务器URL
+        console.log('[百度TTS] 使用服务器地址:', config.serverUrl);
+        
         // 选择发音人编号
         let per = 0; // 默认女声
         if (gender === 'male') per = 1;
@@ -1022,9 +1055,16 @@ async function playBaiduTTS(text, gender = 'female', useCache = true, scenario =
         const blob = await response.blob();
         if (useCache && window.AudioCache) {
             await window.AudioCache.add(text, blob, per, 'baidu');
+        }        const audio = window.MobileAudioFix 
+            ? window.MobileAudioFix.createCompatibleAudio(URL.createObjectURL(blob))
+            : new Audio(URL.createObjectURL(blob));
+        
+        // 使用移动端兼容的播放方法
+        if (window.MobileAudioFix && window.MobileAudioFix.playAudio) {
+            await window.MobileAudioFix.playAudio(audio);
+        } else {
+            await audio.play();
         }
-        const audio = new Audio(URL.createObjectURL(blob));
-        await audio.play();
         return true;
     } catch (e) {
         showMessage('百度TTS播放失败: ' + (e.message || e));
@@ -1036,6 +1076,21 @@ window.playBaiduTTS = playBaiduTTS;
 document.addEventListener('DOMContentLoaded', async function() {
     try {
         console.log('[SpeakCards] DOMContentLoaded');
+        
+        // 移动端音频修复初始化状态检查
+        if (window.MobileAudioFix) {
+            const deviceInfo = window.MobileAudioFix.getDeviceInfo();
+            console.log('[SpeakCards] 设备信息:', deviceInfo);
+            
+            if (deviceInfo.isMobile) {
+                console.log('[SpeakCards] 检测到移动设备，已启用音频兼容性修复');
+            }
+            
+            if (deviceInfo.isWeChatOrQQ) {
+                console.log('[SpeakCards] 检测到微信/QQ浏览器，需要用户交互激活音频');
+            }
+        }
+        
         // 主容器
         let domAppContainer = document.getElementById('appContainer');
         if (!domAppContainer) {
@@ -1043,13 +1098,20 @@ document.addEventListener('DOMContentLoaded', async function() {
             domAppContainer.id = 'appContainer';
             domAppContainer.style.display = 'none';
             document.body.appendChild(domAppContainer);
-        }
-        // 顶部栏
+        }        // 顶部栏
         if (!topBar.parentNode) {
             domAppContainer.insertBefore(topBar, domAppContainer.firstChild);
         }
         if (!userActionsContainer.parentNode) {
             topBar.appendChild(userActionsContainer);
+        }
+        
+        // 移动端音频状态指示器
+        if (window.MobileAudioFix && window.MobileAudioFix.isMobileDevice()) {
+            const audioStatusIndicator = createMobileAudioStatusIndicator();
+            if (audioStatusIndicator && !document.getElementById('mobile-audio-status')) {
+                domAppContainer.insertBefore(audioStatusIndicator, domAppContainer.firstChild);
+            }
         }
         // 消息框
         messageBox = document.getElementById('messageBox');
@@ -1243,4 +1305,104 @@ function syncConfigToModal() {
         globalScene: window.selectedScene,
         globalVoice: window.selectedVoiceOption
     });
+}
+
+// 创建移动端音频状态指示器
+function createMobileAudioStatusIndicator() {
+    if (!window.MobileAudioFix || !window.MobileAudioFix.isMobileDevice()) {
+        return null;
+    }
+
+    // 如果音频已经激活，不显示指示器
+    if (window.MobileAudioFix.isAudioEnabled) {
+        return null;
+    }
+
+    const container = document.createElement('div');
+    container.id = 'mobile-audio-status';
+    container.className = 'mobile-audio-status';
+    container.style.cssText = `
+        position: sticky;
+        top: 0;
+        z-index: 200;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 10px 16px;
+        text-align: center;
+        font-size: 13px;
+        font-weight: 500;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    `;
+
+    const statusText = document.createElement('span');
+    statusText.className = 'status-text';
+    
+    // 根据浏览器类型显示不同提示
+    const isWeChatOrQQ = window.MobileAudioFix.isWeChatOrQQBrowser();
+    statusText.textContent = isWeChatOrQQ 
+        ? '🎵 微信中点击此处激活音频' 
+        : '🎵 点击激活音频播放';
+
+    const statusIcon = document.createElement('span');
+    statusIcon.className = 'status-icon';
+    statusIcon.textContent = '👆';
+
+    container.appendChild(statusText);
+    container.appendChild(statusIcon);
+
+    // 点击激活音频
+    container.addEventListener('click', async function() {
+        if (container.style.pointerEvents === 'none') return;
+        
+        container.style.pointerEvents = 'none';
+        
+        try {
+            statusText.textContent = '⏳ 正在激活...';
+            statusIcon.textContent = '🔄';
+            container.style.background = 'linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%)';
+            
+            // 恢复AudioContext（如果需要）
+            if (window.MobileAudioFix.audioContext && window.MobileAudioFix.audioContext.state === 'suspended') {
+                await window.MobileAudioFix.audioContext.resume();
+            }
+            
+            // 标记为已激活
+            window.MobileAudioFix.isAudioEnabled = true;
+            
+            statusText.textContent = '✅ 音频已激活';
+            statusIcon.textContent = '🎵';
+            container.style.background = 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)';
+            
+            // 显示成功消息
+            if (typeof showMessage === 'function') {
+                showMessage('🔊 音频播放已激活！现在可以听发音了', 2000);
+            }
+            
+            // 2秒后隐藏指示器
+            setTimeout(() => {
+                container.style.transform = 'translateY(-100%)';
+                setTimeout(() => {
+                    if (container.parentNode) {
+                        container.parentNode.removeChild(container);
+                    }
+                }, 300);
+            }, 2000);
+            
+        } catch (error) {
+            console.warn('[Mobile Audio] 激活失败:', error);
+            statusText.textContent = '❌ 点击重试';
+            statusIcon.textContent = '🔄';
+            container.style.background = 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)';
+            container.style.pointerEvents = 'auto';
+        }
+    });
+
+    return container;
 }

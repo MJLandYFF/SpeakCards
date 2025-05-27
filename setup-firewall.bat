@@ -11,12 +11,12 @@ if %errorLevel% == 0 (
     netsh advfirewall firewall delete rule name="SpeakCards" >nul 2>&1
     
     :: 添加新的入站规则
-    netsh advfirewall firewall add rule name="SpeakCards" dir=in action=allow protocol=TCP localport=3000
+    netsh advfirewall firewall add rule name="SpeakCards" dir=in action=allow protocol=TCP localport=8000
     
     if %errorLevel% == 0 (
         echo ✅ 防火墙规则添加成功！
         echo 📱 现在您可以通过局域网访问SpeakCards了
-        echo 🌐 局域网地址: http://192.168.1.118:3000
+        echo 🌐 局域网地址: http://192.168.1.118:8000
     ) else (
         echo ❌ 防火墙规则添加失败
     )

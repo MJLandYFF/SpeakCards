@@ -57,4 +57,4 @@ app.get('/health', (req, res) => {
     res.json({ status: 'OK', service: 'Baidu TTS Server', timestamp: new Date().toISOString() });
 });
 
-app.listen(3000, () => console.log('Baidu TTS server running on port 3000'));
+app.listen(8000, () => console.log('Baidu TTS server running on port 8000'));
