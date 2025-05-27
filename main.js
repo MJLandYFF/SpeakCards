@@ -58,7 +58,7 @@ function showMessage(message, duration = 3000) {
 }
 
 // MOVED FUNCTIONS START
-function handleWeChatLogin() {
+async function handleWeChatLogin() {
     // 模拟微信登录
     const mockUserId = 'wechat_user_' + Date.now();
     const mockDisplayName = '微信用户' + mockUserId.substring(mockUserId.length - 4);
@@ -69,7 +69,7 @@ function handleWeChatLogin() {
         
         showAppScreen(); // 显示应用主界面
         
-        loadUserSettings(); 
+        await loadUserSettings(); 
         loadCustomWords(); 
         // setupCustomWordManagementUI(); // 已移除自定义单词功能，避免报错
         if (typeof updateCategoryDropdown === 'function') {
@@ -85,7 +85,7 @@ function handleWeChatLogin() {
     }
 }
 
-function handleLogout() {
+async function handleLogout() {
     if (currentUser) {
         showMessage(`再见，${currentUser.displayName || currentUser.id}。`);
     }
@@ -99,7 +99,7 @@ function handleLogout() {
     if (typeof updateCategoryDropdown === 'function') {
         updateCategoryDropdown();
     }
-    loadUserSettings();
+    await loadUserSettings();
     showLoginScreen();
 }
 // MOVED FUNCTIONS END
@@ -110,116 +110,188 @@ let userProgress = {
     learningWords: {}  // 存储正在学习的单词及其状态，例如 { wordId: { status: 'learning', lastReview: 'date' } }
 };
 
-function loadUserProgress() {
+async function loadUserProgress() {
     if (currentUser && currentUser.id) {
-        const progressKey = 'userProgress_' + currentUser.id;
-        const storedProgress = localStorage.getItem(progressKey);
-        if (storedProgress) {
+        let progressLoaded = false;
+        
+        // 对于密码登录用户，优先尝试从后端加载
+        if (currentUser.provider === 'password') {
             try {
-                userProgress = JSON.parse(storedProgress);
+                const response = await fetch('/api/get-progress', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: currentUser.id })
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.progress) {
+                        userProgress = data.progress;
+                        if (userProgress.masteredWords) {
+                            userProgress.masteredWords = userProgress.masteredWords.filter(id => !!id);
+                        }
+                        progressLoaded = true;
+                        console.log("Loaded progress from backend for user:", currentUser.id);
+                    }
+                }
             } catch (e) {
-                console.error("Error parsing user progress:", e);
-                userProgress = { masteredWords: [], learningWords: {} }; // 重置为默认
+                console.log("Failed to load progress from backend, falling back to localStorage:", e);
             }
-        } else {
-            userProgress = { masteredWords: [], learningWords: {} }; // 新用户的默认进度
+        }
+        
+        // 如果后端加载失败或用户不是密码登录，则从localStorage加载
+        if (!progressLoaded) {
+            const progressKey = 'userProgress_' + currentUser.id;
+            const storedProgress = localStorage.getItem(progressKey);
+            if (storedProgress) {
+                try {
+                    userProgress = JSON.parse(storedProgress);
+                    if (userProgress.masteredWords) {
+                        userProgress.masteredWords = userProgress.masteredWords.filter(id => !!id);
+                    }
+                    console.log("Loaded progress from localStorage for user:", currentUser.id);
+                } catch (e) {
+                    console.error("Error parsing user progress:", e);
+                    userProgress = { masteredWords: [], learningWords: {} }; // 重置为默认
+                }
+            } else {
+                userProgress = { masteredWords: [], learningWords: {} }; // 新用户的默认进度
+            }
         }
     } else {
         // 游客的进度（如果需要）
         userProgress = { masteredWords: [], learningWords: {} };
     }
-    // console.log("Loaded progress for user:", currentUser ? currentUser.id : 'guest', userProgress);
 }
 
-function saveUserProgress() {
+async function saveUserProgress() {
     if (currentUser && currentUser.id) {
+        // 清理无效的单词ID
+        if (userProgress.masteredWords) {
+            userProgress.masteredWords = userProgress.masteredWords.filter(id => !!id);
+        }
+        
+        // 首先保存到localStorage（本地备份）
         try {
             localStorage.setItem(`userProgress_${currentUser.id}`, JSON.stringify(userProgress));
-            // console.log("Saved progress for user:", currentUser.id);
+            console.log("Saved progress to localStorage for user:", currentUser.id);
         } catch (e) {
-            console.error("Error saving user progress:", e);
+            console.error("Error saving user progress to localStorage:", e);
+        }
+        
+        // 如果用户是通过密码登录的，则尝试保存到后端
+        if (currentUser.provider === 'password') {
+            try {
+                await fetch('/api/save-progress', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: currentUser.id, progress: userProgress })
+                });
+                console.log("Saved progress to backend for user:", currentUser.id);
+            } catch (e) {
+                console.error('保存进度到后端失败:', e);
+                // 后端保存失败时不显示错误消息，因为本地已经保存了
+            }
         }
     }
 }
 // --- End Learning Progress Placeholder ---
 
-// --- Password Authentication Functions ---
-function getStoredUserAccounts() {
-    const accounts = localStorage.getItem(USER_ACCOUNTS_KEY);
-    return accounts ? JSON.parse(accounts) : {};
-}
-
-function saveStoredUserAccounts(accounts) {
-    localStorage.setItem(USER_ACCOUNTS_KEY, JSON.stringify(accounts));
-}
-
-function handlePasswordRegister() {
+// --- Password Authentication Functions (API版) ---
+async function handlePasswordRegister() {
     const usernameInput = document.getElementById('usernameInput');
     const passwordInput = document.getElementById('passwordInput');
     const username = usernameInput.value.trim();
     const password = passwordInput.value.trim();
-
+    
+    // 验证手机号格式
     if (!username || !password) {
-        showMessage('用户名和密码不能为空。', 3000);
+        showMessage('手机号和密码不能为空。', 3000);
         return;
     }
-
-    const accounts = getStoredUserAccounts();
-    if (accounts[username]) {
-        showMessage('用户名已存在，请尝试其他用户名。', 3000);
+    
+    // 验证手机号是否为11位数字
+    const phoneRegex = /^1[3-9]\d{9}$/;
+    if (!phoneRegex.test(username)) {
+        showMessage('请输入正确的11位手机号，格式如：13812345678', 3000);
         return;
     }
-
-    // IMPORTANT: Storing password in plaintext. This is NOT secure for real applications.
-    accounts[username] = { password: password }; 
-    saveStoredUserAccounts(accounts);
-    showMessage('注册成功！现在您可以使用账号密码登录了。', 3000);
-    usernameInput.value = ''; // Clear fields
-    passwordInput.value = '';
-}
-
-function handlePasswordLogin() {
-    const usernameInput = document.getElementById('usernameInput');
-    const passwordInput = document.getElementById('passwordInput');
-    const username = usernameInput.value.trim();
-    const password = passwordInput.value.trim();
-
-    if (!username || !password) {
-        showMessage('请输入用户名和密码。', 3000);
+    
+    // 验证密码长度
+    if (password.length < 6) {
+        showMessage('密码至少需要6位字符。', 3000);
         return;
     }
-
-    const accounts = getStoredUserAccounts();
-    if (!accounts[username]) {
-        showMessage('用户不存在，请先注册。', 3000);
-        return;
-    }
-
-    // IMPORTANT: Comparing plaintext password. NOT secure.
-    if (accounts[username].password === password) {
-        currentUser = { id: username, displayName: username, provider: 'password' };
-        try {
-            localStorage.setItem('flashcardLoggedInUser', JSON.stringify(currentUser));
-            
-            showAppScreen();
-            loadUserSettings();
-            loadCustomWords();
-            // setupCustomWordManagementUI(); // 已移除自定义单词功能，避免报错
-            if (typeof updateCategoryDropdown === 'function') {
-                updateCategoryDropdown();
-            }
-            renderFlashcards(categorySelect.value || '全部');
-            showMessage(`欢迎回来，${currentUser.displayName}！`);
-        } catch (e) {
-            console.error("Error saving user to localStorage:", e);
-            showMessage('登录时发生错误。');
-            currentUser = null;
+    
+    try {
+        const res = await fetch('/api/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password })
+        });
+        if (res.status === 409) {
+            showMessage('该手机号已被注册，请尝试其他手机号。', 3000);
+            return;
         }
-    } else {
-        showMessage('密码错误，请重试。', 3000);
+        if (!res.ok) {
+            showMessage('注册失败，请重试。', 3000);
+            return;
+        }
+        showMessage('注册成功！现在您可以使用手机号和密码登录了。', 3000);
+        usernameInput.value = '';
+        passwordInput.value = '';
+    } catch (e) {
+        showMessage('注册失败：' + (e.message || e), 3000);
     }
 }
-// --- End Password Authentication Functions ---
+
+async function handlePasswordLogin() {
+    const usernameInput = document.getElementById('usernameInput');
+    const passwordInput = document.getElementById('passwordInput');
+    const username = usernameInput.value.trim();
+    const password = passwordInput.value.trim();
+    // 验证手机号和密码
+    if (!username || !password) {
+        showMessage('请输入手机号和密码。', 3000);
+        return;
+    }
+    // 验证手机号格式
+    const phoneRegex = /^1[3-9]\d{9}$/;
+    if (!phoneRegex.test(username)) {
+        showMessage('请输入正确的11位手机号。', 3000);
+        return;
+    }
+    try {
+        const res = await fetch('/api/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password })
+        });
+        if (res.status === 401) {
+            showMessage('手机号或密码错误。', 3000);
+            return;
+        }
+        if (!res.ok) {
+            showMessage('登录失败，请重试。', 3000);
+            return;
+        }
+        const data = await res.json();
+        currentUser = { id: data.user.username, displayName: data.user.username, provider: 'password' };
+        userProgress = data.user.progress || { masteredWords: [], learningWords: {}, scene: '全部', voice: 'default' };
+        if (userProgress.masteredWords) {
+            userProgress.masteredWords = userProgress.masteredWords.filter(id => !!id);
+        }        localStorage.setItem('flashcardLoggedInUser', JSON.stringify(currentUser));
+        showAppScreen();
+        await loadUserSettings();
+        loadCustomWords();
+        renderFlashcards(window.selectedScene || '全部');
+        showMessage(`欢迎回来，${currentUser.displayName}！`);
+    } catch (e) {
+        showMessage('登录失败：' + (e.message || e), 3000);
+    }
+}
+
+// --- End Password Authentication Functions (API版) ---
 
 
 function showLoginScreen() {
@@ -245,25 +317,62 @@ function showLoginScreen() {
     welcomeMessage.style.color = '#2D3748';
     welcomeMessage.style.marginBottom = '30px'; // Adjusted margin
     welcomeMessage.style.fontWeight = 'bold';
-    loginScreenContainer.appendChild(welcomeMessage);
-
-    // Username/Password Login and Registration Area
+    loginScreenContainer.appendChild(welcomeMessage);    // Username/Password Login and Registration Area
     const accountAuthContainer = document.createElement('div');
     accountAuthContainer.style.marginBottom = '25px'; // Space before WeChat button
     accountAuthContainer.style.width = '100%';
     accountAuthContainer.style.maxWidth = '320px'; // Limit width of input fields
 
     const usernameInput = document.createElement('input');
-    usernameInput.type = 'text';
-    usernameInput.placeholder = '用户名';
+    usernameInput.type = 'tel';
+    usernameInput.placeholder = '手机号（11位）';
     usernameInput.id = 'usernameInput';
     usernameInput.className = 'login-input'; // For styling
+    usernameInput.maxLength = 11;
+    usernameInput.pattern = '[0-9]{11}';
+
+    // 密码输入框容器（用于添加眼睛图标）
+    const passwordContainer = document.createElement('div');
+    passwordContainer.className = 'password-input-container';
+    passwordContainer.style.position = 'relative';
+    passwordContainer.style.width = '100%';
 
     const passwordInput = document.createElement('input');
     passwordInput.type = 'password';
     passwordInput.placeholder = '密码';
     passwordInput.id = 'passwordInput';
     passwordInput.className = 'login-input'; // For styling
+    passwordInput.style.paddingRight = '45px'; // 为眼睛图标留出空间
+
+    // 密码可见性切换按钮
+    const passwordToggle = document.createElement('button');
+    passwordToggle.type = 'button';
+    passwordToggle.className = 'password-toggle';
+    passwordToggle.style.position = 'absolute';
+    passwordToggle.style.right = '10px';
+    passwordToggle.style.top = '50%';
+    passwordToggle.style.transform = 'translateY(-50%)';
+    passwordToggle.style.background = 'none';
+    passwordToggle.style.border = 'none';
+    passwordToggle.style.cursor = 'pointer';
+    passwordToggle.style.color = '#718096';
+    passwordToggle.style.fontSize = '18px';
+    passwordToggle.innerHTML = '👁️';
+    passwordToggle.title = '显示/隐藏密码';
+
+    // 切换密码可见性
+    passwordToggle.addEventListener('click', function() {
+        if (passwordInput.type === 'password') {
+            passwordInput.type = 'text';
+            passwordToggle.innerHTML = '🙈';
+        } else {
+            passwordInput.type = 'password';
+            passwordToggle.innerHTML = '👁️';
+        }
+    });
+
+    passwordContainer.appendChild(passwordInput);
+    passwordContainer.appendChild(passwordToggle);
 
     const loginButton = document.createElement('button');
     loginButton.textContent = '登录';
@@ -277,10 +386,8 @@ function showLoginScreen() {
     
     // Add event listeners for new buttons
     loginButton.addEventListener('click', handlePasswordLogin);
-    registerButton.addEventListener('click', handlePasswordRegister);
-
-    accountAuthContainer.appendChild(usernameInput);
-    accountAuthContainer.appendChild(passwordInput);
+    registerButton.addEventListener('click', handlePasswordRegister);    accountAuthContainer.appendChild(usernameInput);
+    accountAuthContainer.appendChild(passwordContainer);
     accountAuthContainer.appendChild(loginButton);
     accountAuthContainer.appendChild(registerButton);
     loginScreenContainer.appendChild(accountAuthContainer);
@@ -332,7 +439,28 @@ function showAppScreen() {
 }
 
 function updateUserDisplay() {
-    userActionsContainer.innerHTML = ''; // 清空旧内容
+    userActionsContainer.innerHTML = ''; // 清空旧内容    // 添加配置按钮
+    const configBtn = document.createElement('button');
+    configBtn.id = 'configOptionsBtn';
+    configBtn.className = 'config-button';
+    configBtn.innerHTML = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="3"></circle>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+      </svg>
+      <span>配置选项</span>
+    `;
+    
+    // 直接绑定配置按钮的点击事件
+    configBtn.addEventListener('click', function() {
+        const configModal = document.getElementById('configOptionsModal');
+        if (configModal) {
+            syncConfigToModal(); // 同步当前配置到模态框
+            configModal.style.display = 'flex';
+        }
+    });
+    
+    userActionsContainer.appendChild(configBtn);
 
     if (currentUser && currentUser.id) {
         const userNameDisplay = document.createElement('div');
@@ -373,7 +501,7 @@ function updateUserDisplay() {
 }
 
 
-function loadUserSettings() {
+async function loadUserSettings() {
     const storedUser = localStorage.getItem('flashcardLoggedInUser');
     if (storedUser) {
         try {
@@ -388,10 +516,12 @@ function loadUserSettings() {
     }
 
     updateUserDisplay(); // Update top bar user info (if app screen is active)
-
+    
     if (currentUser && currentUser.id) {
         const voiceKey = 'userSettings_' + currentUser.id + '_voice';
         const categoryKey = 'userSettings_' + currentUser.id + '_category';
+        const selectedVoiceKey = 'userSettings_' + currentUser.id + '_selectedVoice';
+        const selectedSceneKey = 'userSettings_' + currentUser.id + '_selectedScene';
 
         const storedVoice = localStorage.getItem(voiceKey);
         if (storedVoice && voiceSelect.value !== storedVoice) { // Check if update is needed
@@ -402,7 +532,30 @@ function loadUserSettings() {
         if (storedCategory && categorySelect.value !== storedCategory) { // Check if update is needed
             categorySelect.value = storedCategory;
         }
-        loadUserProgress(); // 加载用户学习进度
+        
+        // 恢复全局选择状态（用于配置模态框）
+        const storedSelectedVoice = localStorage.getItem(selectedVoiceKey);
+        if (storedSelectedVoice) {
+            window.selectedVoiceOption = storedSelectedVoice;
+        } else {
+            window.selectedVoiceOption = voiceSelect.value || 'default';
+        }
+        
+        const storedSelectedScene = localStorage.getItem(selectedSceneKey);
+        if (storedSelectedScene) {
+            window.selectedScene = storedSelectedScene;
+        } else {
+            window.selectedScene = categorySelect.value || '全部';
+        }
+        
+        console.log('用户设置已从localStorage恢复:', currentUser.id, {
+            voice: storedVoice,
+            category: storedCategory,
+            selectedVoice: window.selectedVoiceOption,
+            selectedScene: window.selectedScene
+        });
+        
+        await loadUserProgress(); // 加载用户学习进度
         loadCustomWords(); // 加载自定义单词
     } else {
         // For logged-out state, or if settings are not found,
@@ -421,12 +574,23 @@ function loadUserSettings() {
 
 function saveUserSettings() {
     if (currentUser && currentUser.id) {
+        // 保存主界面的选择
         if (voiceSelect) {
             localStorage.setItem('userSettings_' + currentUser.id + '_voice', voiceSelect.value);
         }
         if (categorySelect) {
             localStorage.setItem('userSettings_' + currentUser.id + '_category', categorySelect.value);
         }
+        
+        // 保存全局选择状态（用于配置模态框）
+        if (window.selectedVoiceOption) {
+            localStorage.setItem('userSettings_' + currentUser.id + '_selectedVoice', window.selectedVoiceOption);
+        }
+        if (window.selectedScene) {
+            localStorage.setItem('userSettings_' + currentUser.id + '_selectedScene', window.selectedScene);
+        }
+        
+        console.log('用户设置已保存到localStorage:', currentUser.id);
     }
     // Not saving for guest in this model, as settings are tied to logged-in user.
 }
@@ -561,31 +725,44 @@ function setupCustomWordManagementUI() {
 // userProgress, loadUserProgress, saveUserProgress are already defined (MOVED EARLIER)
 
 function markWordAsMastered(wordId, cardElement) {
+    console.log('调用 markWordAsMastered:', wordId, cardElement);
+    if (!wordId) {
+        showMessage('单词ID无效，无法标记。', 2000);
+        return;
+    }
+    if (!userProgress.masteredWords) userProgress.masteredWords = [];
     const wordIsMastered = userProgress.masteredWords.includes(wordId);
     const masterButton = cardElement.querySelector('.master-button');
 
     if (wordIsMastered) {
-        userProgress.masteredWords = userProgress.masteredWords.filter(id => id !== wordId);
+        userProgress.masteredWords = userProgress.masteredWords.filter(id => id && id !== wordId);
         if (masterButton) masterButton.textContent = '标记为已掌握';
         cardElement.classList.remove('is-mastered');
         showMessage('已从掌握列表移除。', 1500);
     } else {
-        userProgress.masteredWords.push(wordId);
+        if (!userProgress.masteredWords.includes(wordId)) {
+            userProgress.masteredWords.push(wordId);
+        }
         if (masterButton) masterButton.textContent = '已掌握';
         cardElement.classList.add('is-mastered');
         showMessage('已标记为掌握！', 1500);
     }
+    userProgress.masteredWords = userProgress.masteredWords.filter(id => !!id);
     saveUserProgress();
 }
-// --- End Learning Progress ---
 
+// HTML转义函数，防止XSS攻击
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
 
-// 渲染闪卡主函数，集成 speakText
+// 渲染闪卡主函数，使用高效的批量渲染方式
 function renderFlashcards(category = '全部') {
     const grid = document.getElementById('flashcardGrid');
     if (!grid) return;
-    grid.innerHTML = '';
-
+    
     // 获取数据源
     let data = [];
     if (category === 'Custom') {
@@ -597,89 +774,108 @@ function renderFlashcards(category = '全部') {
     if (!data || data.length === 0) {
         document.getElementById('flashcardGridMessage').style.display = 'block';
         document.getElementById('flashcardGridMessage').textContent = '本类别下暂无单词。';
+        grid.innerHTML = '';
         return;
     } else {
         document.getElementById('flashcardGridMessage').style.display = 'none';
     }
 
+    console.log(`[SpeakCards] 开始渲染 ${data.length} 个单词卡片 (分类: ${category})`);
+    
+    // 预处理数据，确保每个单词有唯一ID
     data.forEach((wordObj, idx) => {
-        const cardContainer = document.createElement('div');
-        cardContainer.className = 'flashcard-container';
-
-        // 卡片本体
-        const card = document.createElement('div');
-        card.className = 'flashcard';
-
-        // 卡片正面
-        const cardFront = document.createElement('div');
-        cardFront.className = 'flashcard-front';
-        cardFront.innerHTML = `
-            <div class="word">${wordObj.word}</div>
-            <div class="pronunciation">${wordObj.pronunciation || ''}</div>
-        `;
-        // 发音按钮
-        const speakBtn = document.createElement('button');
-        speakBtn.className = 'speak-btn simple-button';
-        speakBtn.textContent = '🔊';
-        speakBtn.title = '发音';
-        speakBtn.onclick = (e) => { e.stopPropagation(); speakText(wordObj.word, wordObj.lang || 'en'); };
-        cardFront.appendChild(speakBtn);
-
-        // 标记掌握按钮
-        const masterBtn = document.createElement('button');
-        masterBtn.className = 'master-button simple-button';
-        masterBtn.textContent = userProgress.masteredWords.includes(wordObj.id) ? '已掌握' : '标记为已掌握';
-        masterBtn.onclick = (e) => { e.stopPropagation(); markWordAsMastered(wordObj.id, cardContainer); };
-        cardFront.appendChild(masterBtn);
-
-        // 序号
-        const indexDiv = document.createElement('div');
-        indexDiv.className = 'card-index';
-        indexDiv.textContent = idx + 1;
-        cardFront.appendChild(indexDiv);
-
-        // 卡片背面
-        const cardBack = document.createElement('div');
-        cardBack.className = 'flashcard-back';
-        cardBack.innerHTML = `<div class="chinese-translation">${wordObj.chinese}</div>`;
-
-        // 序号（背面也显示）
-        const indexDivBack = document.createElement('div');
-        indexDivBack.className = 'card-index';
-        indexDivBack.textContent = idx + 1;
-        cardBack.appendChild(indexDivBack);
-
-        // 组装卡片
-        card.appendChild(cardFront);
-        card.appendChild(cardBack);
-        cardContainer.appendChild(card);
-        grid.appendChild(cardContainer);
-
-        // 翻转动画逻辑
-        cardContainer.addEventListener('click', function(e) {
-            if (e.target.closest('.speak-btn') || e.target.closest('.master-button')) return;
-            card.classList.toggle('flipped');
-        });
-
-        // 已掌握样式
-        if (userProgress.masteredWords.includes(wordObj.id)) {
-            cardContainer.classList.add('is-mastered');
+        if (!wordObj.id) {
+            wordObj.id = `auto_${category}_${idx}_${Date.now()}`;
+            // 同步写回 flashcardData，避免刷新前id丢失
+            if (window.flashcardData) {
+                const match = window.flashcardData.find(w => w.word === wordObj.word && w.chinese === wordObj.chinese);
+                if (match) match.id = wordObj.id;
+            }
+            console.warn('[SpeakCards] 检测到单词缺少id，已自动补全:', wordObj.word, wordObj.id);
         }
     });
+
+    // 使用innerHTML批量渲染，性能更优
+    const masteredWords = userProgress.masteredWords || [];
+    const cardsHTML = data.map((wordObj, idx) => {
+        const isMastered = masteredWords.includes(wordObj.id);
+        const masteredClass = isMastered ? 'is-mastered' : '';
+        const masterBtnText = isMastered ? '已掌握' : '标记为已掌握';
+        
+        return `
+            <div class="flashcard-container ${masteredClass}" data-word-id="${wordObj.id}" data-word="${escapeHtml(wordObj.word)}" data-lang="${wordObj.lang || 'en'}">
+                <div class="flashcard">
+                    <div class="flashcard-front">
+                        <div class="word">${escapeHtml(wordObj.word)}</div>
+                        <div class="pronunciation">${escapeHtml(wordObj.pronunciation || '')}</div>
+                        <button class="speak-btn simple-button" title="发音">🔊</button>
+                        <button class="master-button simple-button">${masterBtnText}</button>
+                        <div class="card-index">${idx + 1}</div>
+                    </div>
+                    <div class="flashcard-back">
+                        <div class="chinese-translation">${escapeHtml(wordObj.chinese)}</div>
+                        <div class="card-index">${idx + 1}</div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    // 一次性更新DOM
+    grid.innerHTML = cardsHTML;
+
+    // 使用事件委托处理所有卡片事件，避免为每个卡片单独绑定事件
+    grid.removeEventListener('click', handleGridClick); // 移除旧的监听器
+    grid.addEventListener('click', handleGridClick);
+}
+
+// 事件委托处理函数
+function handleGridClick(e) {
+    const cardContainer = e.target.closest('.flashcard-container');
+    if (!cardContainer) return;
+
+    const wordId = cardContainer.getAttribute('data-word-id');
+    const word = cardContainer.getAttribute('data-word');
+    const lang = cardContainer.getAttribute('data-lang');
+    const card = cardContainer.querySelector('.flashcard');
+
+    // 处理发音按钮点击
+    if (e.target.closest('.speak-btn')) {
+        e.stopPropagation();
+        speakText(word, lang);
+        return;
+    }
+
+    // 处理掌握按钮点击
+    if (e.target.closest('.master-button')) {
+        e.stopPropagation();
+        markWordAsMastered(wordId, cardContainer);
+        return;
+    }
+
+    // 处理卡片翻转
+    if (card) {
+        card.classList.toggle('flipped');
+    }
 }
 
 // 智能发音主入口，自动选择TTS方案
 async function speakText(text, lang = 'en') {
     if (!text) return;
     try {
+        let voicePref = window.selectedVoiceOption || 'default';
+        let ttsLang = lang;
+        if (voicePref === 'male') ttsLang = 'en-US-male';
+        if (voicePref === 'female') ttsLang = 'en-US-female';
+
         // 优先使用增强浏览器TTS
         if (window.TTSWithCache && TTSWithCache.playEnhancedBrowserTTS) {
-            const ok = await TTSWithCache.playEnhancedBrowserTTS(text, lang, true);
+            const ok = await TTSWithCache.playEnhancedBrowserTTS(text, ttsLang, true);
             if (ok) return;
         }
         // 兼容直接引入 tts-cache.js 的情况
         if (typeof playEnhancedBrowserTTS === 'function') {
-            const ok = await playEnhancedBrowserTTS(text, lang, true);
+            const ok = await playEnhancedBrowserTTS(text, ttsLang, true);
             if (ok) return;
         }
         // 尝试 ResponsiveVoice
@@ -698,6 +894,11 @@ async function speakText(text, lang = 'en') {
         // 尝试 ElevenLabs（需配置API密钥）
         if (typeof playElevenLabsTTS === 'function') {
             const ok = await playElevenLabsTTS(text, lang);
+            if (ok) return;
+        }
+        // 百度TTS兜底
+        if (typeof playBaiduTTS === 'function') {
+            const ok = await playBaiduTTS(text, voicePref === 'male' ? 'male' : 'female', true);
             if (ok) return;
         }
         // 最后兜底：浏览器原生TTS
@@ -719,8 +920,6 @@ async function speakText(text, lang = 'en') {
         showMessage('发音失败：' + (err.message || err));
     }
 }
-
-// 保证 speakText 全局可用
 window.speakText = speakText;
 
 // ElevenLabs TTS (免费版)
@@ -772,7 +971,52 @@ async function playElevenLabsTTS(text, lang = 'zh') {
     }
 }
 
-document.addEventListener('DOMContentLoaded', function() {
+// 百度TTS播放函数（带缓存）
+async function playBaiduTTS(text, gender = 'female', useCache = true, scenario = 'conversation') {
+    try {
+        const config = window.TTS_CONFIG && window.TTS_CONFIG.baidu;
+        if (!config || !config.apiKey || !config.secretKey || !config.serverUrl) {
+            showMessage('百度TTS未配置');
+            return false;
+        }
+        // 选择发音人编号
+        let per = 0; // 默认女声
+        if (gender === 'male') per = 1;
+        if (gender === 'female') per = 0;
+        // 英文特殊处理
+        if (/^[a-zA-Z\s\.,!?\-]+$/.test(text)) {
+            per = gender === 'male' ? 106 : 110;
+        }
+        // 缓存key
+        const cacheKey = `baiduTTS_${text}_${per}`;
+        if (useCache && window.AudioCache) {
+            const cached = await window.AudioCache.get(text, per, 'baidu');
+            if (cached && await window.AudioCache.playAudioFromCache(cached)) {
+                return true;
+            }
+        }
+        // 请求后端
+        const response = await fetch(config.serverUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text, lang: /[\u4e00-\u9fa5]/.test(text) ? 'zh' : 'en', per })
+        });
+        if (!response.ok) throw new Error('百度TTS请求失败');
+        const blob = await response.blob();
+        if (useCache && window.AudioCache) {
+            await window.AudioCache.add(text, blob, per, 'baidu');
+        }
+        const audio = new Audio(URL.createObjectURL(blob));
+        await audio.play();
+        return true;
+    } catch (e) {
+        showMessage('百度TTS播放失败: ' + (e.message || e));
+        return false;
+    }
+}
+window.playBaiduTTS = playBaiduTTS;
+
+document.addEventListener('DOMContentLoaded', async function() {
     try {
         console.log('[SpeakCards] DOMContentLoaded');
         // 主容器
@@ -789,12 +1033,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         if (!userActionsContainer.parentNode) {
             topBar.appendChild(userActionsContainer);
-        }
-        if (!voiceSelect.parentNode) {
-            topBar.appendChild(voiceSelect);
-        }
-        if (!categorySelect.parentNode) {
-            topBar.appendChild(categorySelect);
         }
         // 消息框
         messageBox = document.getElementById('messageBox');
@@ -820,10 +1058,9 @@ document.addEventListener('DOMContentLoaded', function() {
         // 判断登录状态
         const storedUser = localStorage.getItem('flashcardLoggedInUser');
         if (storedUser) {
-            try {
-                currentUser = JSON.parse(storedUser);
+            try {                currentUser = JSON.parse(storedUser);
                 showAppScreen();
-                loadUserSettings();
+                await loadUserSettings();
                 loadCustomWords();
                 // setupCustomWordManagementUI(); // 已移除自定义单词功能，避免报错
                 if (typeof updateCategoryDropdown === 'function') {
@@ -841,14 +1078,101 @@ document.addEventListener('DOMContentLoaded', function() {
         // 移除自定义单词管理UI
         const customWordManagementDiv = document.getElementById('customWordManagementContainer');
         if (customWordManagementDiv) {
-            customWordManagementDiv.style.display = 'none';
-        }
+            customWordManagementDiv.style.display = 'none';        }
+        
+        // 配置模态框的事件绑定
+        setupConfigModalEvents();
+        
         console.log('[SpeakCards] 页面初始化完成');
     } catch (err) {
         console.error('[SpeakCards] 页面初始化异常', err);
         alert('页面初始化异常：' + err.message);
     }
 });
+
+// 配置模态框事件绑定函数
+function setupConfigModalEvents() {
+    // 配置模态框的关闭事件
+    const configModalCloseBtn = document.getElementById('configModalCloseBtn');
+    if (configModalCloseBtn) {
+        configModalCloseBtn.addEventListener('click', function() {
+            const configModal = document.getElementById('configOptionsModal');
+            if (configModal) {
+                configModal.style.display = 'none';
+            }
+        });
+    }
+
+    const configModalCancelBtn = document.getElementById('configModalCancelBtn');
+    if (configModalCancelBtn) {
+        configModalCancelBtn.addEventListener('click', function() {
+            const configModal = document.getElementById('configOptionsModal');
+            if (configModal) {
+                configModal.style.display = 'none';
+            }
+        });
+    }
+
+    const configModalOkBtn = document.getElementById('configModalOkBtn');
+    if (configModalOkBtn) {
+        configModalOkBtn.addEventListener('click', function() {
+            console.log('配置模态框确定按钮被点击'); // 调试日志
+            const sceneSelect = document.getElementById('sceneSelect');
+            const voiceOptionSelect = document.getElementById('voiceOptionSelect');
+            const selectedScene = sceneSelect ? sceneSelect.value : '全部';
+            const selectedVoice = voiceOptionSelect ? voiceOptionSelect.value : 'default';
+            
+            window.selectedScene = selectedScene;
+            window.selectedVoiceOption = selectedVoice;
+            
+            // 更新主界面的下拉框
+            if (categorySelect) {
+                categorySelect.value = selectedScene;
+            }
+            if (voiceSelect) {
+                voiceSelect.value = selectedVoice;
+            }
+
+            saveUserSettings();
+            renderFlashcards(selectedScene);
+            showMessage('设置已保存！', 2000);
+            
+            // 关闭模态框
+            const configModal = document.getElementById('configOptionsModal');
+            if (configModal) {
+                configModal.style.display = 'none';
+            }
+        });
+    }
+
+    // 点击模态框外部关闭
+    const configOptionsModal = document.getElementById('configOptionsModal');
+    if (configOptionsModal) {
+        configOptionsModal.addEventListener('click', function(e) {
+            if (e.target === this) {
+                this.style.display = 'none';
+            }
+        });
+    }
+
+    const sceneSelect = document.getElementById('sceneSelect');
+    if (sceneSelect) {
+        sceneSelect.addEventListener('change', function() {
+            const selectedScene = this.value;
+            window.selectedScene = selectedScene;
+            renderFlashcards(selectedScene);
+        });
+    }
+
+    const voiceGenderSelect = document.getElementById('voiceGenderSelect');
+    if (voiceGenderSelect) {
+        voiceGenderSelect.addEventListener('change', function() {
+            const selectedVoice = this.value;
+            window.selectedVoiceOption = selectedVoice;
+            showMessage('语音选项已更改。', 2000);
+        });
+    }
+}
 
 // 填充分类下拉框
 function updateCategoryDropdown() {
@@ -863,32 +1187,43 @@ function updateCategoryDropdown() {
     allOption.textContent = '全部';
     categorySelect.appendChild(allOption);
     Array.from(categories).sort().forEach(cat => {
-        if (cat && cat !== '全部') {
-            const opt = document.createElement('option');
-            opt.value = cat;
-            opt.textContent = cat;
-            categorySelect.appendChild(opt);
+        if (cat) {
+            const option = document.createElement('option');
+            option.value = cat;
+            option.textContent = cat;
+            categorySelect.appendChild(option);
         }
     });
-    // 选中当前值
-    if (categorySelect.value) {
-        categorySelect.value = categorySelect.value;
-    } else {
-        categorySelect.value = '全部';
-    }
 }
 
-// 在主界面初始化和登录后调用 updateCategoryDropdown 并监听下拉框变化
-document.addEventListener('DOMContentLoaded', function() {
-    // ...existing code...
-    // 更新分类下拉框
-    updateCategoryDropdown();
+// 初始化分类下拉框
+updateCategoryDropdown();
 
-    // 监听分类下拉框变化
-    categorySelect.addEventListener('change', function() {
-        const selectedCategory = categorySelect.value;
-        renderFlashcards(selectedCategory);
-        saveUserSettings(); // 保存用户设置（当前选择的分类）
+// 预先加载用户设置
+(async () => {
+    await loadUserSettings();
+})();
+
+// 同步配置选项到模态框
+function syncConfigToModal() {
+    const sceneSelect = document.getElementById('sceneSelect');
+    const voiceOptionSelect = document.getElementById('voiceOptionSelect');
+    
+    // 优先使用全局保存的状态，其次使用下拉框的当前值
+    if (sceneSelect) {
+        const currentScene = window.selectedScene || categorySelect?.value || '全部';
+        sceneSelect.value = currentScene;
+    }
+    
+    if (voiceOptionSelect) {
+        const currentVoice = window.selectedVoiceOption || voiceSelect?.value || 'default';
+        voiceOptionSelect.value = currentVoice;
+    }
+    
+    console.log('配置已同步到模态框:', {
+        scene: sceneSelect?.value,
+        voice: voiceOptionSelect?.value,
+        globalScene: window.selectedScene,
+        globalVoice: window.selectedVoiceOption
     });
-    // ...existing code...
-});
+}

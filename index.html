@@ -42,6 +42,46 @@
                 }
             });
         });
-    </script>
+    </script>    <!-- 配置按钮已移至JS中创建，将和用户信息栏在一起显示 -->
+    
+    <div id="configOptionsModal" class="config-modal">
+      <div class="config-modal-content">
+        <div class="config-modal-header">
+          <h2>配置选项</h2>
+          <button id="configModalCloseBtn" class="close-button">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
+        
+        <div class="config-modal-body">
+          <div class="form-group">
+            <label for="sceneSelect">适用场景：</label>
+            <select id="sceneSelect">
+              <option value="全部">全部</option>
+              <option value="商务工作">商务工作</option>
+              <option value="日常生活">日常生活</option>
+              <option value="旅行游玩">旅行游玩</option>
+            </select>
+          </div>
+          
+          <div class="form-group">
+            <label for="voiceOptionSelect">人声：</label>
+            <select id="voiceOptionSelect">
+              <option value="default">浏览器默认</option>
+              <option value="male">美式男声</option>
+              <option value="female">美式女声</option>
+            </select>
+          </div>
+        </div>
+        
+        <div class="config-modal-footer">
+          <button id="configModalOkBtn" class="primary-button">确定</button>
+          <button id="configModalCancelBtn" class="secondary-button">取消</button>
+        </div>
+      </div>
+    </div>
 </body>
 </html>

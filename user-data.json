@@ -1,0 +1,15 @@
+{
+  "users": [
+    {
+      "username": "13851581762",
+      "password": "123456",
+      "progress": {
+        "masteredWords": [
+          "daily_001",
+          "daily_002"
+        ],
+        "learningWords": {}
+      }
+    }
+  ]
+}
