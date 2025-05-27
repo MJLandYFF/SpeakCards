@@ -1044,15 +1044,18 @@ async function playBaiduTTS(text, gender = 'female', useCache = true, scenario =
             if (cached && await window.AudioCache.playAudioFromCache(cached)) {
                 return true;
             }
-        }        // 请求后端 - 同时传递per和gender参数确保兼容性
+        }        // 请求后端 - 增强性别参数传递的可靠性
+        console.log('[百度TTS] 发送请求:', { text: text.slice(0, 20) + '...', gender, per });
+        
         const response = await fetch(config.serverUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 
                 text, 
                 lang: /[\u4e00-\u9fa5]/.test(text) ? 'zh' : 'en', 
-                per,       // 数字形式：0女1男
-                gender     // 字符串形式：'male'/'female'
+                per: per,  // 确保明确传递数字值
+                gender: gender, // 确保明确传递字符串
+                voiceType: per // 额外添加一个参数以防万一
             })
         });
         if (!response.ok) throw new Error('百度TTS请求失败');
