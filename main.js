@@ -248,8 +248,7 @@ async function saveUserProgress() {
         if (userProgress.masteredWords) {
             userProgress.masteredWords = userProgress.masteredWords.filter(id => !!id);
         }
-        
-        // 首先保存到localStorage（本地备份）
+          // 首先保存到localStorage（本地备份）
         try {
             localStorage.setItem(`userProgress_${currentUser.id}`, JSON.stringify(userProgress));
             console.log("Saved progress to localStorage for user:", currentUser.id);
@@ -257,25 +256,45 @@ async function saveUserProgress() {
             console.error("Error saving user progress to localStorage:", e);
         }
         
-        // 如果用户是通过密码登录的，则尝试保存到后端
+        // 检测是否在线环境
+        const isOnlineStatic = window.location.protocol === 'https:' && !window.location.hostname.includes('localhost');
+        
+        // 如果用户是通过密码登录的，则保存用户信息
         if (currentUser.provider === 'password') {
-            try {
-                await fetch('/api/save-progress', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username: currentUser.id, progress: userProgress })
-                });
-                console.log("Saved progress to backend for user:", currentUser.id);
-            } catch (e) {
-                console.error('保存进度到后端失败:', e);
-                // 后端保存失败时不显示错误消息，因为本地已经保存了
+            if (isOnlineStatic) {
+                // 在线环境：更新localStorage中的用户账户信息
+                try {
+                    const existingUsers = JSON.parse(localStorage.getItem(USER_ACCOUNTS_KEY) || '[]');
+                    const userIndex = existingUsers.findIndex(u => u.username === currentUser.id);
+                    
+                    if (userIndex !== -1) {
+                        existingUsers[userIndex].progress = userProgress;
+                        localStorage.setItem(USER_ACCOUNTS_KEY, JSON.stringify(existingUsers));
+                        console.log("Updated user progress in localStorage for user:", currentUser.id);
+                    }
+                } catch (e) {
+                    console.error('保存进度到localStorage账户失败:', e);
+                }
+            } else {
+                // 本地环境：保存到后端API
+                try {
+                    await fetch('/api/save-progress', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ username: currentUser.id, progress: userProgress })
+                    });
+                    console.log("Saved progress to backend for user:", currentUser.id);
+                } catch (e) {
+                    console.error('保存进度到后端失败:', e);
+                    // 后端保存失败时不显示错误消息，因为本地已经保存了
+                }
             }
         }
     }
 }
 // --- End Learning Progress Placeholder ---
 
-// --- Password Authentication Functions (API版) ---
+// --- Password Authentication Functions (支持在线和本地环境) ---
 async function handlePasswordRegister() {
     const usernameInput = document.getElementById('usernameInput');
     const passwordInput = document.getElementById('passwordInput');
@@ -301,33 +320,74 @@ async function handlePasswordRegister() {
         return;
     }
     
-    try {
-        const res = await fetch('/api/register', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username, password })
-        });
-        
-        if (res.status === 409) {
-            // 账号已注册，提供修改密码功能
-            const changePassword = confirm('此账号已注册。是否要修改密码？');
-            if (changePassword) {
-                await handleChangePassword(username, password);
+    // 检测是否在线环境（GitHub Pages等静态托管）
+    const isOnlineStatic = window.location.protocol === 'https:' && !window.location.hostname.includes('localhost');
+    
+    if (isOnlineStatic) {
+        // 在线环境使用localStorage
+        try {
+            const existingUsers = JSON.parse(localStorage.getItem(USER_ACCOUNTS_KEY) || '[]');
+            
+            // 检查用户是否已存在
+            const existingUser = existingUsers.find(u => u.username === username);
+            if (existingUser) {
+                const changePassword = confirm('此账号已注册。是否要修改密码？');
+                if (changePassword) {
+                    existingUser.password = password;
+                    localStorage.setItem(USER_ACCOUNTS_KEY, JSON.stringify(existingUsers));
+                    alert('密码修改成功！');
+                    usernameInput.value = '';
+                    passwordInput.value = '';
+                }
+                return;
             }
-            return;
+            
+            // 创建新用户
+            const newUser = {
+                username,
+                password,
+                progress: { masteredWords: [], learningWords: {}, scene: '全部', voice: 'default' },
+                createdAt: new Date().toISOString()
+            };
+              existingUsers.push(newUser);
+            localStorage.setItem(USER_ACCOUNTS_KEY, JSON.stringify(existingUsers));
+            
+            alert('注册成功！');
+            usernameInput.value = '';
+            passwordInput.value = '';
+        } catch (e) {
+            console.error('在线注册失败:', e);
+            alert('注册失败：' + e.message);
         }
-        
-        if (!res.ok) {
-            alert('注册失败，请重试。');
-            return;
+    } else {
+        // 本地环境使用API服务器
+        try {
+            const res = await fetch('/api/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+            
+            if (res.status === 409) {
+                const changePassword = confirm('此账号已注册。是否要修改密码？');
+                if (changePassword) {
+                    await handleChangePassword(username, password);
+                }
+                return;
+            }
+            
+            if (!res.ok) {
+                alert('注册失败，请重试。');
+                return;
+            }
+            
+            alert('注册成功！');
+            usernameInput.value = '';
+            passwordInput.value = '';
+        } catch (e) {
+            console.error('API注册失败:', e);
+            alert('注册失败：' + e.message);
         }
-        
-        alert('注册成功！');
-        // 清空输入框
-        usernameInput.value = '';
-        passwordInput.value = '';
-    } catch (e) {
-        alert('注册失败：' + (e.message || e));
     }
 }
 
@@ -359,7 +419,8 @@ async function handlePasswordLogin() {
     const passwordInput = document.getElementById('passwordInput');
     const username = usernameInput.value.trim();
     const password = passwordInput.value.trim();
-      // 验证手机号和密码
+      
+    // 验证手机号和密码
     if (!username || !password) {
         alert('请输入手机号和密码。');
         return;
@@ -372,44 +433,87 @@ async function handlePasswordLogin() {
         return;
     }
     
-    try {
-        const res = await fetch('/api/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username, password })
-        });        if (res.status === 401) {
-            console.log('[DEBUG] 401错误 - 账号密码错误');
-            alert('账号、密码错误');
-            return;
+    // 检测是否在线环境（GitHub Pages等静态托管）
+    const isOnlineStatic = window.location.protocol === 'https:' && !window.location.hostname.includes('localhost');
+    
+    if (isOnlineStatic) {
+        // 在线环境使用localStorage
+        try {
+            const existingUsers = JSON.parse(localStorage.getItem(USER_ACCOUNTS_KEY) || '[]');
+            const user = existingUsers.find(u => u.username === username && u.password === password);
+            
+            if (!user) {
+                alert('账号、密码错误');
+                return;
+            }
+            
+            // 登录成功
+            currentUser = { id: user.username, displayName: user.username, provider: 'password' };
+            userProgress = user.progress || { masteredWords: [], learningWords: {}, scene: '全部', voice: 'default' };
+            
+            if (userProgress.masteredWords) {
+                userProgress.masteredWords = userProgress.masteredWords.filter(id => !!id);
+            }
+            
+            localStorage.setItem('flashcardLoggedInUser', JSON.stringify(currentUser));
+            
+            alert('登录成功！');
+            
+            setTimeout(async () => {
+                showAppScreen();
+                await loadUserSettings();
+                loadCustomWords();
+                renderFlashcards(window.selectedScene || '全部');
+                alert(`欢迎回来，${currentUser.displayName}！`);
+            }, 1500);
+              } catch (e) {
+            console.error('在线登录失败:', e);
+            alert('登录失败：' + e.message);
         }
+    } else {
+        // 本地环境使用API服务器
+        try {
+            const res = await fetch('/api/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+            
+            if (res.status === 401) {
+                console.log('[DEBUG] 401错误 - 账号密码错误');
+                alert('账号、密码错误');
+                return;
+            }
 
-        if (!res.ok) {
-            alert('登录失败，请重试。');
-            return;
+            if (!res.ok) {
+                alert('登录失败，请重试。');
+                return;
+            }
+            
+            const data = await res.json();
+            currentUser = { id: data.user.username, displayName: data.user.username, provider: 'password' };
+            userProgress = data.user.progress || { masteredWords: [], learningWords: {}, scene: '全部', voice: 'default' };
+            
+            if (userProgress.masteredWords) {
+                userProgress.masteredWords = userProgress.masteredWords.filter(id => !!id);
+            }
+            
+            localStorage.setItem('flashcardLoggedInUser', JSON.stringify(currentUser));
+              
+            alert('登录成功！');
+            
+            setTimeout(async () => {
+                showAppScreen();
+                await loadUserSettings();
+                loadCustomWords();
+                renderFlashcards(window.selectedScene || '全部');
+                alert(`欢迎回来，${currentUser.displayName}！`);
+            }, 1500);
+              
+        } catch (e) {
+            console.error('API登录失败:', e);
+            alert('登录失败：' + e.message);
         }
-        
-        const data = await res.json();
-        currentUser = { id: data.user.username, displayName: data.user.username, provider: 'password' };
-        userProgress = data.user.progress || { masteredWords: [], learningWords: {}, scene: '全部', voice: 'default' };
-        
-        if (userProgress.masteredWords) {
-            userProgress.masteredWords = userProgress.masteredWords.filter(id => !!id);
-        }
-        
-        localStorage.setItem('flashcardLoggedInUser', JSON.stringify(currentUser));
-          // 显示登录成功消息，然后跳转
-        alert('登录成功！');
-        
-        // 延迟跳转到主页面
-        setTimeout(async () => {
-            showAppScreen();
-            await loadUserSettings();
-            loadCustomWords();
-            renderFlashcards(window.selectedScene || '全部');
-            alert(`欢迎回来，${currentUser.displayName}！`);
-        }, 1500);
-          } catch (e) {
-        alert('登录失败：' + (e.message || e));
     }
 }
 
