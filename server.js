@@ -107,6 +107,30 @@ app.post('/api/login', (req, res) => {
     res.json({ success: true, user: { username: user.username, progress: user.progress || {} } });
 });
 
+// 修改密码
+app.post('/api/change-password', (req, res) => {
+    const { username, newPassword } = req.body;
+    if (!username || !newPassword) {
+        return res.status(400).json({ error: '用户名和新密码不能为空' });
+    }
+    
+    // 验证新密码长度
+    if (newPassword.length < 6) {
+        return res.status(400).json({ error: '密码至少需要6位字符' });
+    }
+    
+    const data = readUserData();
+    const user = data.users.find(u => u.username === username);
+    if (!user) {
+        return res.status(404).json({ error: '用户不存在' });
+    }
+    
+    // 更新密码
+    user.password = newPassword;
+    writeUserData(data);
+    res.json({ success: true, message: '密码修改成功' });
+});
+
 // 保存用户操作（如掌握单词、场景等）
 app.post('/api/save-progress', (req, res) => {
     const { username, progress } = req.body;

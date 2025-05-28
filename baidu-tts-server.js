@@ -77,4 +77,11 @@ app.get('/health', (req, res) => {
     res.json({ status: 'OK', service: 'Baidu TTS Server', timestamp: new Date().toISOString() });
 });
 
-app.listen(8000, () => console.log('Baidu TTS server running on port 8000'));
+// 监听所有网络接口，允许手机等设备访问
+app.listen(8000, '0.0.0.0', () => {
+    console.log('Baidu TTS server running on port 8000');
+    console.log('服务器地址:');
+    console.log('  本地访问: http://localhost:8000');
+    console.log('  局域网访问: http://192.168.1.118:8000');
+    console.log('  手机访问: 使用电脑IP地址 192.168.1.118:8000');
+});

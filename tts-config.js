@@ -122,7 +122,13 @@ window.TTS_CONFIG = window.TTS_CONFIG || {};
 window.TTS_CONFIG.baidu = {
   apiKey: 'rxMchZBLlVQgh23U9KDdfbTD',
   secretKey: '7TAOotMxEFHmepilZPxSxMwdupf9mpSg',
-  serverUrl: 'http://localhost:8000/tts' // 本地后端服务地址
+  // 支持多个服务器URL，移动端会自动选择可用的
+  serverUrls: [
+    'http://192.168.1.118:8000/tts', // 本机IP地址，供手机访问
+    'http://localhost:8000/tts',     // 本地访问
+    'http://127.0.0.1:8000/tts'      // 备用本地访问
+  ],
+  serverUrl: 'http://192.168.1.118:8000/tts' // 默认使用本机IP
 };
 
 // 导出配置 (如果在模块环境中使用)

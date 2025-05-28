@@ -48,12 +48,90 @@ userActionsContainer.style.justifyContent = 'flex-start'; // 换行后靠左对�
 userActionsContainer.style.gap = '8px'; // 设置元素间距，替代旧的 marginRight
 
 
-function showMessage(message, duration = 3000) {
-    if (!messageBox) return;
+function showMessage(message, duration = 3000, type = 'info') {
+    console.log('[DEBUG] showMessage调用:', message, 'type:', type);
+    // 确保 messageBox 存在，如果不存在则创建一个
+    if (!messageBox) {
+        messageBox = document.getElementById('messageBox');
+        if (!messageBox) {
+            messageBox = document.createElement('div');
+            messageBox.id = 'messageBox';
+            messageBox.className = 'message-box';
+            messageBox.style.display = 'none';
+              // 直接设置所有样式，确保消息框能显示
+            messageBox.style.cssText = `
+                position: fixed !important;
+                top: 20px !important;
+                left: 50% !important;
+                transform: translateX(-50%) !important;
+                z-index: 99999 !important;
+                background-color: #4299e1 !important;
+                color: white !important;
+                padding: 12px 24px !important;
+                border-radius: 8px !important;
+                font-weight: 500 !important;
+                font-size: 14px !important;
+                max-width: 90vw !important;
+                text-align: center !important;
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4) !important;
+                border: 2px solid rgba(255, 255, 255, 0.5) !important;
+                pointer-events: auto !important;
+                visibility: hidden !important;
+                opacity: 0 !important;
+                display: block !important;
+            `;
+            
+            // 优先添加到 appContainer，如果不存在则添加到 body
+            const container = document.getElementById('appContainer') || document.body;
+            container.appendChild(messageBox);
+            console.log('[DEBUG] messageBox已创建并添加到:', container.tagName);
+        }
+    }
+    
+    console.log('[DEBUG] messageBox元素:', messageBox);
     messageBox.textContent = message;
-    messageBox.style.display = 'block';
+      // 根据消息类型设置不同的背景色
+    switch(type) {
+        case 'error':
+            messageBox.style.setProperty('background-color', '#e53e3e', 'important');
+            break;
+        case 'success':
+            messageBox.style.setProperty('background-color', '#38a169', 'important');
+            break;
+        case 'warning':
+            messageBox.style.setProperty('background-color', '#d69e2e', 'important');
+            break;
+        default:
+            messageBox.style.setProperty('background-color', '#4299e1', 'important');
+    }
+    
+    messageBox.style.setProperty('display', 'block', 'important');
+    messageBox.style.setProperty('visibility', 'visible', 'important');
+    messageBox.style.setProperty('opacity', '1', 'important');
+      console.log('[DEBUG] messageBox显示状态已设置为block, 背景色:', messageBox.style.backgroundColor);
+    console.log('[DEBUG] messageBox位置信息:', {
+        top: messageBox.style.top,
+        left: messageBox.style.left,
+        transform: messageBox.style.transform,
+        zIndex: messageBox.style.zIndex,
+        display: messageBox.style.display
+    });
+    
+    // 检查消息框是否在视窗内
     setTimeout(() => {
-        messageBox.style.display = 'none';
+        const rect = messageBox.getBoundingClientRect();
+        const isVisible = rect.top >= 0 && rect.left >= 0 && 
+                         rect.bottom <= window.innerHeight && 
+                         rect.right <= window.innerWidth;
+        console.log('[DEBUG] messageBox位置检查:', {
+            rect: rect,
+            isInViewport: isVisible,
+            windowSize: { width: window.innerWidth, height: window.innerHeight }
+        });
+    }, 100);
+      setTimeout(() => {
+        messageBox.style.setProperty('display', 'none', 'important');
+        console.log('[DEBUG] messageBox隐藏');
     }, duration);
 }
 
@@ -76,10 +154,10 @@ async function handleWeChatLogin() {
             updateCategoryDropdown();
         }
         renderFlashcards(categorySelect.value || '全部'); 
-        showMessage(`欢迎，${currentUser.displayName}！`); // 在应用界面显示欢迎消息
+        alert(`欢迎，${currentUser.displayName}！`);
     } catch (e) {
         console.error("Error saving user to localStorage:", e);
-        showMessage('登录时发生错误。');
+        alert('登录时发生错误。');
         currentUser = null; // 回滚状态
         // 可以在这里选择保留在登录页面或显示错误信息
     }
@@ -87,7 +165,7 @@ async function handleWeChatLogin() {
 
 async function handleLogout() {
     if (currentUser) {
-        showMessage(`再见，${currentUser.displayName || currentUser.id}。`);
+        alert(`再见，${currentUser.displayName || currentUser.id}。`);
     }
     currentUser = null;
     localStorage.removeItem('flashcardLoggedInUser');
@@ -206,20 +284,20 @@ async function handlePasswordRegister() {
     
     // 验证手机号格式
     if (!username || !password) {
-        showMessage('手机号和密码不能为空。', 3000);
+        alert('手机号和密码不能为空。');
         return;
     }
     
     // 验证手机号是否为11位数字
     const phoneRegex = /^1[3-9]\d{9}$/;
     if (!phoneRegex.test(username)) {
-        showMessage('请输入正确的11位手机号，格式如：13812345678', 3000);
+        alert('请输入正确的11位手机号，格式如：13812345678');
         return;
     }
     
     // 验证密码长度
     if (password.length < 6) {
-        showMessage('密码至少需要6位字符。', 3000);
+        alert('密码至少需要6位字符。');
         return;
     }
     
@@ -229,19 +307,50 @@ async function handlePasswordRegister() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ username, password })
         });
+        
         if (res.status === 409) {
-            showMessage('该手机号已被注册，请尝试其他手机号。', 3000);
+            // 账号已注册，提供修改密码功能
+            const changePassword = confirm('此账号已注册。是否要修改密码？');
+            if (changePassword) {
+                await handleChangePassword(username, password);
+            }
             return;
         }
+        
         if (!res.ok) {
-            showMessage('注册失败，请重试。', 3000);
+            alert('注册失败，请重试。');
             return;
         }
-        showMessage('注册成功！现在您可以使用手机号和密码登录了。', 3000);
+        
+        alert('注册成功！');
+        // 清空输入框
         usernameInput.value = '';
         passwordInput.value = '';
     } catch (e) {
-        showMessage('注册失败：' + (e.message || e), 3000);
+        alert('注册失败：' + (e.message || e));
+    }
+}
+
+// 新增修改密码函数
+async function handleChangePassword(username, newPassword) {
+    try {
+        const res = await fetch('/api/change-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, newPassword })
+        });
+        
+        if (!res.ok) {
+            alert('修改密码失败，请重试。');
+            return;
+        }
+        
+        alert('密码修改成功！');
+        // 清空输入框
+        document.getElementById('usernameInput').value = '';
+        document.getElementById('passwordInput').value = '';
+    } catch (e) {
+        alert('修改密码失败：' + (e.message || e));
     }
 }
 
@@ -250,44 +359,57 @@ async function handlePasswordLogin() {
     const passwordInput = document.getElementById('passwordInput');
     const username = usernameInput.value.trim();
     const password = passwordInput.value.trim();
-    // 验证手机号和密码
+      // 验证手机号和密码
     if (!username || !password) {
-        showMessage('请输入手机号和密码。', 3000);
+        alert('请输入手机号和密码。');
         return;
     }
+    
     // 验证手机号格式
     const phoneRegex = /^1[3-9]\d{9}$/;
     if (!phoneRegex.test(username)) {
-        showMessage('请输入正确的11位手机号。', 3000);
+        alert('请输入正确的11位手机号。');
         return;
     }
+    
     try {
         const res = await fetch('/api/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ username, password })
-        });
-        if (res.status === 401) {
-            showMessage('手机号或密码错误。', 3000);
+        });        if (res.status === 401) {
+            console.log('[DEBUG] 401错误 - 账号密码错误');
+            alert('账号、密码错误');
             return;
         }
+
         if (!res.ok) {
-            showMessage('登录失败，请重试。', 3000);
+            alert('登录失败，请重试。');
             return;
         }
+        
         const data = await res.json();
         currentUser = { id: data.user.username, displayName: data.user.username, provider: 'password' };
         userProgress = data.user.progress || { masteredWords: [], learningWords: {}, scene: '全部', voice: 'default' };
+        
         if (userProgress.masteredWords) {
             userProgress.masteredWords = userProgress.masteredWords.filter(id => !!id);
-        }        localStorage.setItem('flashcardLoggedInUser', JSON.stringify(currentUser));
-        showAppScreen();
-        await loadUserSettings();
-        loadCustomWords();
-        renderFlashcards(window.selectedScene || '全部');
-        showMessage(`欢迎回来，${currentUser.displayName}！`);
-    } catch (e) {
-        showMessage('登录失败：' + (e.message || e), 3000);
+        }
+        
+        localStorage.setItem('flashcardLoggedInUser', JSON.stringify(currentUser));
+          // 显示登录成功消息，然后跳转
+        alert('登录成功！');
+        
+        // 延迟跳转到主页面
+        setTimeout(async () => {
+            showAppScreen();
+            await loadUserSettings();
+            loadCustomWords();
+            renderFlashcards(window.selectedScene || '全部');
+            alert(`欢迎回来，${currentUser.displayName}！`);
+        }, 1500);
+          } catch (e) {
+        alert('登录失败：' + (e.message || e));
     }
 }
 
@@ -309,7 +431,14 @@ function showLoginScreen() {
     loginScreenContainer.style.backgroundColor = '#f0f2f5';
 
     loginScreenContainer.style.position = 'relative';
-    loginScreenContainer.style.zIndex = '10';
+    loginScreenContainer.style.zIndex = '10';    // 确保登录页面也有消息框，但是要添加到body而不是loginScreenContainer
+    if (!messageBox) {
+        messageBox = document.createElement('div');
+        messageBox.id = 'messageBox';
+        messageBox.className = 'message-box';
+        messageBox.style.display = 'none';
+        document.body.appendChild(messageBox);
+    }    // 测试消息框代码已删除 - 登录页面准备就绪alert已移除    // 测试按钮代码已删除
 
     const welcomeMessage = document.createElement('h1');
     welcomeMessage.textContent = '欢迎使用 SpeakCards!';
@@ -317,7 +446,7 @@ function showLoginScreen() {
     welcomeMessage.style.color = '#2D3748';
     welcomeMessage.style.marginBottom = '30px'; // Adjusted margin
     welcomeMessage.style.fontWeight = 'bold';
-    loginScreenContainer.appendChild(welcomeMessage);    // Username/Password Login and Registration Area
+    loginScreenContainer.appendChild(welcomeMessage);// Username/Password Login and Registration Area
     const accountAuthContainer = document.createElement('div');
     accountAuthContainer.style.marginBottom = '25px'; // Space before WeChat button
     accountAuthContainer.style.width = '100%';
@@ -342,9 +471,7 @@ function showLoginScreen() {
     passwordInput.placeholder = '密码';
     passwordInput.id = 'passwordInput';
     passwordInput.className = 'login-input'; // For styling
-    passwordInput.style.paddingRight = '45px'; // 为眼睛图标留出空间
-
-    // 密码可见性切换按钮
+    passwordInput.style.paddingRight = '45px'; // 为眼睛图标留出空间    // 密码可见性切换按钮
     const passwordToggle = document.createElement('button');
     passwordToggle.type = 'button';
     passwordToggle.className = 'password-toggle';
@@ -356,18 +483,32 @@ function showLoginScreen() {
     passwordToggle.style.border = 'none';
     passwordToggle.style.cursor = 'pointer';
     passwordToggle.style.color = '#718096';
-    passwordToggle.style.fontSize = '18px';
-    passwordToggle.innerHTML = '👁️';
+    passwordToggle.innerHTML = `
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+            <circle cx="12" cy="12" r="3"></circle>
+        </svg>
+    `;
     passwordToggle.title = '显示/隐藏密码';
 
     // 切换密码可见性
     passwordToggle.addEventListener('click', function() {
         if (passwordInput.type === 'password') {
             passwordInput.type = 'text';
-            passwordToggle.innerHTML = '🙈';
+            passwordToggle.innerHTML = `
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                    <line x1="1" y1="1" x2="23" y2="23"></line>
+                </svg>
+            `;
         } else {
             passwordInput.type = 'password';
-            passwordToggle.innerHTML = '👁️';
+            passwordToggle.innerHTML = `
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                    <circle cx="12" cy="12" r="3"></circle>
+                </svg>
+            `;
         }
     });
 
@@ -397,10 +538,8 @@ function showLoginScreen() {
     separator.textContent = '或';
     separator.style.margin = '15px 0';
     separator.style.color = '#718096'; // A softer color
-    loginScreenContainer.appendChild(separator);
-
-    const weChatLoginButton = document.createElement('button');
-    weChatLoginButton.textContent = '微信登录 (模拟)';
+    loginScreenContainer.appendChild(separator);    const weChatLoginButton = document.createElement('button');
+    weChatLoginButton.textContent = '微信一键登录';
     weChatLoginButton.className = 'login-button simple-button';
     weChatLoginButton.style.padding = '18px 35px';
     weChatLoginButton.style.fontSize = '1.25rem';
@@ -676,7 +815,7 @@ function clearCustomWords() {
     if (confirm("Are you sure you want to clear all your custom words? This cannot be undone.")) {
         customWords = [];
         saveCustomWords();
-        showMessage("Custom word list cleared.", 2000);
+        alert("Custom word list cleared.");
         if (categorySelect.value === "Custom") {
             renderFlashcards("Custom"); // Re-render if viewing custom words
         }
@@ -924,22 +1063,11 @@ async function renderMoreCards(count) {
         }
         
         console.log(`[SpeakCards] 已渲染 ${currentRenderState.renderedCount}/${currentRenderState.totalCount} 个卡片`);
-        
-        // 移动端音频状态检查
-        if (window.MobileAudioFix && window.MobileAudioFix.isMobileDevice() && startIndex === 0) {
-            setTimeout(() => {
-                if (!window.MobileAudioFix.isAudioEnabled) {
-                    console.log('[SpeakCards] 首次渲染完成，提醒用户激活音频');
-                    if (typeof showMessage === 'function') {
-                        showMessage('🎵 点击页面激活音频播放', 3000);
-                    }
-                }
-            }, 100);
-        }
+          // 移动端音频状态检查 - 已删除alert提示
         
     } catch (error) {
         console.error('[SpeakCards] 渲染卡片失败:', error);
-        showMessage('卡片加载失败，请刷新重试', 3000);
+        alert('卡片加载失败，请刷新重试');
     } finally {
         currentRenderState.isRendering = false;
     }
@@ -1093,24 +1221,15 @@ async function speakTextOptimized(text, lang = 'en') {
             // 快速检查音频状态，避免阻塞
             if (!window.MobileAudioFix.isAudioEnabled) {
                 // 异步尝试激活，不阻塞用户操作
-                const activationPromise = window.MobileAudioFix.unlockAudioOnDemand();
-                
-                // 给用户即时反馈
-                if (typeof showMessage === 'function') {
-                    showMessage('🎵 正在激活音频...', 2000);
-                }
+                const activationPromise = window.MobileAudioFix.unlockAudioOnDemand();                  // 不显示alert提示
+                console.log('[SpeakTextOptimized] 正在激活音频...');
                 
                 const activated = await Promise.race([
                     activationPromise,
                     new Promise(resolve => setTimeout(() => resolve(false), 1000)) // 1秒超时
                 ]);
-                
-                if (!activated) {
-                    if (typeof showMessage === 'function') {
-                        showMessage('⚠️ 请点击页面激活音频', 2000);
-                    }
-                    return false;
-                }
+                  // 不显示alert提示，直接静默处理
+                console.log('[SpeakTextOptimized] 音频激活超时，静默继续');
             }
         }
 
@@ -1192,20 +1311,11 @@ async function speakTextOptimized(text, lang = 'en') {
                 console.log(`[SpeakTextOptimized] 播放成功:`, successResult.value.method);
                 return true;
             }
-        }
-
-        // 所有策略都失败
+        }        // 所有策略都失败 - 静默处理
         console.warn('[SpeakTextOptimized] 所有TTS方案都失败');
-        if (typeof showMessage === 'function') {
-            showMessage('🔇 暂时无法播放语音', 2000);
-        }
         return false;
-        
-    } catch (err) {
+          } catch (err) {
         console.error('[SpeakTextOptimized] 播放异常:', err);
-        if (typeof showMessage === 'function') {
-            showMessage('🔇 语音播放出错', 2000);
-        }
         return false;
     }
 }
@@ -1223,15 +1333,14 @@ async function speakText(text, lang = 'en') {
         // 移动端音频激活检查 - 简化版本
         if (window.MobileAudioFix && window.MobileAudioFix.isMobileDevice()) {
             console.log('[SpeakText] 检测到移动设备，检查音频状态');
-            
-            // 如果音频未激活，提示用户
+              // 如果音频未激活，静默处理
             if (!window.MobileAudioFix.isAudioEnabled) {
-                showMessage('🎵 点击页面激活音频播放功能', 4000);
+                console.log('[SpeakText] 音频未激活，尝试激活');
                 
                 // 尝试激活音频
                 const unlocked = await window.MobileAudioFix.unlockAudioOnDemand();
                 if (!unlocked) {
-                    showMessage('⚠️ 音频未激活，请点击页面后重试', 3000);
+                    console.warn('[SpeakText] 音频激活失败');
                     return;
                 }
             }
@@ -1360,13 +1469,10 @@ async function playElevenLabsTTS(text, lang = 'zh') {
 async function playBaiduTTS(text, gender = 'female', useCache = true, scenario = 'conversation') {
     try {
         const config = window.TTS_CONFIG && window.TTS_CONFIG.baidu;
-        if (!config || !config.apiKey || !config.secretKey || !config.serverUrl) {
-            showMessage('百度TTS未配置');
+        if (!config || !config.apiKey || !config.secretKey) {
+            alert('百度TTS未配置');
             return false;
         }
-        
-        // 调试日志：显示实际使用的服务器URL
-        console.log('[百度TTS] 使用服务器地址:', config.serverUrl);
         
         // 选择发音人编号
         let per = 0; // 默认女声
@@ -1376,6 +1482,7 @@ async function playBaiduTTS(text, gender = 'female', useCache = true, scenario =
         if (/^[a-zA-Z\s\.,!?\-]+$/.test(text)) {
             per = gender === 'male' ? 106 : 110;
         }
+
         // 缓存key
         const cacheKey = `baiduTTS_${text}_${per}`;
         if (useCache && window.AudioCache) {
@@ -1383,37 +1490,98 @@ async function playBaiduTTS(text, gender = 'female', useCache = true, scenario =
             if (cached && await window.AudioCache.playAudioFromCache(cached)) {
                 return true;
             }
-        }        // 请求后端 - 增强性别参数传递的可靠性
-        console.log('[百度TTS] 发送请求:', { text: text.slice(0, 20) + '...', gender, per });
-        
-        const response = await fetch(config.serverUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-                text, 
-                lang: /[\u4e00-\u9fa5]/.test(text) ? 'zh' : 'en', 
-                per: per,  // 确保明确传递数字值
-                gender: gender, // 确保明确传递字符串
-                voiceType: per // 额外添加一个参数以防万一
-            })
-        });
-        if (!response.ok) throw new Error('百度TTS请求失败');
-        const blob = await response.blob();
-        if (useCache && window.AudioCache) {
-            await window.AudioCache.add(text, blob, per, 'baidu');
-        }        const audio = window.MobileAudioFix 
-            ? window.MobileAudioFix.createCompatibleAudio(URL.createObjectURL(blob))
-            : new Audio(URL.createObjectURL(blob));
-        
-        // 使用移动端兼容的播放方法
-        if (window.MobileAudioFix && window.MobileAudioFix.playAudio) {
-            await window.MobileAudioFix.playAudio(audio);
-        } else {
-            await audio.play();
         }
-        return true;
+
+        // 尝试多个服务器URL以解决移动端访问问题
+        const serverUrls = config.serverUrls || [config.serverUrl];
+        let lastError = null;
+        
+        for (let i = 0; i < serverUrls.length; i++) {
+            const serverUrl = serverUrls[i];
+            
+            try {
+                console.log(`[百度TTS] 尝试服务器 ${i + 1}/${serverUrls.length}: ${serverUrl}`);
+                console.log('[百度TTS] 发送请求:', { text: text.slice(0, 20) + '...', gender, per });
+                
+                const response = await fetch(serverUrl, {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Cache-Control': 'no-cache'
+                    },
+                    body: JSON.stringify({ 
+                        text, 
+                        lang: /[\u4e00-\u9fa5]/.test(text) ? 'zh' : 'en', 
+                        per: per,
+                        gender: gender,
+                        voiceType: per
+                    }),
+                    // 添加超时控制
+                    signal: AbortSignal.timeout(10000) // 10秒超时
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const blob = await response.blob();
+                
+                if (blob.size === 0) {
+                    throw new Error('服务器返回空音频文件');
+                }
+                
+                // 缓存音频
+                if (useCache && window.AudioCache) {
+                    await window.AudioCache.add(text, blob, per, 'baidu');
+                }
+                
+                // 播放音频
+                const audio = window.MobileAudioFix 
+                    ? window.MobileAudioFix.createCompatibleAudio(URL.createObjectURL(blob))
+                    : new Audio(URL.createObjectURL(blob));
+                
+                // 使用移动端兼容的播放方法
+                if (window.MobileAudioFix && window.MobileAudioFix.playAudio) {
+                    await window.MobileAudioFix.playAudio(audio);
+                } else {
+                    await audio.play();
+                }
+                
+                console.log(`[百度TTS] 播放成功，使用服务器: ${serverUrl}`);
+                return true;
+                
+            } catch (error) {
+                lastError = error;
+                console.warn(`[百度TTS] 服务器 ${serverUrl} 失败:`, error.name, error.message);
+                
+                // 如果不是最后一个服务器，继续尝试下一个
+                if (i < serverUrls.length - 1) {
+                    continue;
+                }
+            }
+        }
+        
+        // 所有服务器都失败了
+        console.error('[百度TTS] 所有服务器都失败了，最后错误:', lastError);
+        
+        // 根据错误类型提供更友好的提示
+        let errorMessage = '百度TTS播放失败';
+        if (lastError) {
+            if (lastError.name === 'TypeError' && lastError.message.includes('Failed to fetch')) {
+                errorMessage = '暂时无法播放语音，百度TTS服务器无法访问';
+            } else if (lastError.name === 'TimeoutError') {
+                errorMessage = '百度TTS服务响应超时，请稍后重试';
+            } else {
+                errorMessage = `百度TTS播放失败: ${lastError.message}`;
+            }
+        }
+        
+        alert(errorMessage);
+        return false;
+        
     } catch (e) {
-        showMessage('百度TTS播放失败: ' + (e.message || e));
+        console.error('[百度TTS] 播放异常:', e);
+        alert('百度TTS播放失败: ' + (e.message || e));
         return false;
     }
 }
@@ -1451,14 +1619,13 @@ document.addEventListener('DOMContentLoaded', async function() {
         if (!userActionsContainer.parentNode) {
             topBar.appendChild(userActionsContainer);
         }
-        
-        // 移动端音频状态指示器
-        if (window.MobileAudioFix && window.MobileAudioFix.isMobileDevice()) {
-            const audioStatusIndicator = createMobileAudioStatusIndicator();
-            if (audioStatusIndicator && !document.getElementById('mobile-audio-status')) {
-                domAppContainer.insertBefore(audioStatusIndicator, domAppContainer.firstChild);
-            }
-        }
+          // 移动端音频状态指示器 - 已删除
+        // if (window.MobileAudioFix && window.MobileAudioFix.isMobileDevice()) {
+        //     const audioStatusIndicator = createMobileAudioStatusIndicator();
+        //     if (audioStatusIndicator && !document.getElementById('mobile-audio-status')) {
+        //         domAppContainer.insertBefore(audioStatusIndicator, domAppContainer.firstChild);
+        //     }
+        // }
         // 消息框
         messageBox = document.getElementById('messageBox');
         if (!messageBox) {
@@ -1556,11 +1723,9 @@ function setupConfigModalEvents() {
             }
             if (voiceSelect) {
                 voiceSelect.value = selectedVoice;
-            }
-
-            saveUserSettings();
+            }            saveUserSettings();
             renderFlashcards(selectedScene);
-            showMessage('设置已保存！', 2000);
+            alert('设置已保存！');
             
             // 关闭模态框
             const configModal = document.getElementById('configOptionsModal');
@@ -1591,10 +1756,9 @@ function setupConfigModalEvents() {
 
     const voiceGenderSelect = document.getElementById('voiceGenderSelect');
     if (voiceGenderSelect) {
-        voiceGenderSelect.addEventListener('change', function() {
-            const selectedVoice = this.value;
+        voiceGenderSelect.addEventListener('change', function() {            const selectedVoice = this.value;
             window.selectedVoiceOption = selectedVoice;
-            showMessage('语音选项已更改。', 2000);
+            alert('语音选项已更改。');
         });
     }
 }
@@ -1653,102 +1817,4 @@ function syncConfigToModal() {
     });
 }
 
-// 创建移动端音频状态指示器
-function createMobileAudioStatusIndicator() {
-    if (!window.MobileAudioFix || !window.MobileAudioFix.isMobileDevice()) {
-        return null;
-    }
-
-    // 如果音频已经激活，不显示指示器
-    if (window.MobileAudioFix.isAudioEnabled) {
-        return null;
-    }
-
-    const container = document.createElement('div');
-    container.id = 'mobile-audio-status';
-    container.className = 'mobile-audio-status';
-    container.style.cssText = `
-        position: sticky;
-        top: 0;
-        z-index: 200;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        padding: 10px 16px;
-        text-align: center;
-        font-size: 13px;
-        font-weight: 500;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 8px;
-        cursor: pointer;
-        transition: all 0.3s ease;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-    `;
-
-    const statusText = document.createElement('span');
-    statusText.className = 'status-text';
-    
-    // 根据浏览器类型显示不同提示
-    const isWeChatOrQQ = window.MobileAudioFix.isWeChatOrQQBrowser();
-    statusText.textContent = isWeChatOrQQ 
-        ? '🎵 微信中点击此处激活音频' 
-        : '🎵 点击激活音频播放';
-
-    const statusIcon = document.createElement('span');
-    statusIcon.className = 'status-icon';
-    statusIcon.textContent = '👆';
-
-    container.appendChild(statusText);
-    container.appendChild(statusIcon);
-
-    // 点击激活音频
-    container.addEventListener('click', async function() {
-        if (container.style.pointerEvents === 'none') return;
-        
-        container.style.pointerEvents = 'none';
-        
-        try {
-            statusText.textContent = '⏳ 正在激活...';
-            statusIcon.textContent = '🔄';
-            container.style.background = 'linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%)';
-            
-            // 恢复AudioContext（如果需要）
-            if (window.MobileAudioFix.audioContext && window.MobileAudioFix.audioContext.state === 'suspended') {
-                await window.MobileAudioFix.audioContext.resume();
-            }
-            
-            // 标记为已激活
-            window.MobileAudioFix.isAudioEnabled = true;
-            
-            statusText.textContent = '✅ 音频已激活';
-            statusIcon.textContent = '🎵';
-            container.style.background = 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)';
-            
-            // 显示成功消息
-            if (typeof showMessage === 'function') {
-                showMessage('🔊 音频播放已激活！现在可以听发音了', 2000);
-            }
-            
-            // 2秒后隐藏指示器
-            setTimeout(() => {
-                container.style.transform = 'translateY(-100%)';
-                setTimeout(() => {
-                    if (container.parentNode) {
-                        container.parentNode.removeChild(container);
-                    }
-                }, 300);
-            }, 2000);
-            
-        } catch (error) {
-            console.warn('[Mobile Audio] 激活失败:', error);
-            statusText.textContent = '❌ 点击重试';
-            statusIcon.textContent = '🔄';
-            container.style.background = 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)';
-            container.style.pointerEvents = 'auto';
-        }
-    });
-
-    return container;
-}
+// 移动端音频状态指示器函数已删除 - 用户要求移除顶部音频激活按钮

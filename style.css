@@ -239,7 +239,7 @@ body::before {
 
 /* Login Screen Specific Styles */
 .login-input {
-    width: calc(100% - 22px); /* Full width minus padding and border */
+    width: 100%; /* 统一为100%宽度 */
     padding: 12px 10px;
     margin-bottom: 15px;
     border: 1px solid #CBD5E0; /* Light gray border */
@@ -270,15 +270,25 @@ body::before {
     border: none;
     cursor: pointer;
     color: #718096;
-    font-size: 18px;
+    font-size: 16px;
     padding: 5px;
     border-radius: 4px;
     transition: color 0.2s ease;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .password-toggle:hover {
     color: #4A5568;
     background-color: rgba(113, 128, 150, 0.1);
+}
+
+.password-toggle svg {
+    width: 16px;
+    height: 16px;
 }
 
 .auth-button {
@@ -653,4 +663,45 @@ body, html {
 
 .scroll-complete-hint::before {
     content: '✅ ';
+}
+
+/* 消息框样式 */
+.message-box {
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: #4299e1;
+    color: white;
+    padding: 12px 24px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    z-index: 9999;
+    font-weight: 500;
+    font-size: 14px;
+    max-width: 90vw;
+    text-align: center;    animation: message-fade-in 0.3s ease;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    backdrop-filter: blur(10px);
+}
+
+@keyframes message-fade-in {
+    from {
+        opacity: 0;
+        transform: translateX(-50%) translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+    }
+}
+
+/* 移动端消息框样式优化 */
+@media (max-width: 768px) {
+    .message-box {
+        top: 10px;
+        max-width: 95vw;
+        font-size: 13px;
+        padding: 10px 20px;
+    }
 }

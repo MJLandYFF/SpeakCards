@@ -172,15 +172,12 @@ const MobileAudioFix = {
                 
                 this.isAudioEnabled = true;
                 console.log('[MobileAudioFix] 音频播放权限已解锁');
-                
-                // 移除一次性监听器
+                  // 移除一次性监听器
                 document.removeEventListener('touchstart', unlockAudio, true);
                 document.removeEventListener('click', unlockAudio, true);
                 
-                // 显示成功提示
-                if (typeof window.showMessage === 'function') {
-                    window.showMessage('🔊 音频已激活', 1500);
-                }
+                // 音频激活成功提示已删除 - 静默处理
+                console.log('[MobileAudioFix] 音频已激活');
                 
             } catch (error) {
                 console.warn('[MobileAudioFix] 解锁失败:', error.message);
@@ -190,19 +187,11 @@ const MobileAudioFix = {
         };
 
         // 只在移动设备上设置解锁监听器
-        if (this.isMobileDevice()) {
-            document.addEventListener('touchstart', unlockAudio, { once: true, capture: true, passive: false });
+        if (this.isMobileDevice()) {            document.addEventListener('touchstart', unlockAudio, { once: true, capture: true, passive: false });
             document.addEventListener('click', unlockAudio, { once: true, capture: true, passive: false });
             
-            // 延迟显示激活提示
-            setTimeout(() => {
-                if (!this.isAudioEnabled && typeof window.showMessage === 'function') {
-                    const message = this.isWeChatOrQQBrowser() 
-                        ? '💡 微信中需要点击页面激活音频' 
-                        : '💡 点击页面激活音频功能';
-                    window.showMessage(message, 6000);
-                }
-            }, 2000);
+            // 延迟激活提示已删除 - 静默等待用户交互
+            console.log('[MobileAudioFix] 等待用户交互激活音频');
         } else {
             // 桌面端直接标记为已启用
             this.isAudioEnabled = true;
@@ -211,14 +200,12 @@ const MobileAudioFix = {
     async playAudio(audioElement, retryCount = 2) {
         if (!audioElement) {
             throw new Error('音频元素不存在');
-        }
-
-        // 移动端检查音频是否已解锁
+        }        // 移动端检查音频是否已解锁
         if (this.isMobileDevice() && !this.isAudioEnabled) {
             console.log('[MobileAudioFix] 移动端音频未解锁，尝试按需解锁');
             const unlocked = await this.unlockAudioOnDemand();
             if (!unlocked) {
-                throw new Error('需要用户交互才能播放音频，请点击页面激活');
+                throw new Error('音频播放需要用户交互');
             }
         }
 
@@ -275,14 +262,10 @@ const MobileAudioFix = {
                 
             } catch (error) {
                 console.warn(`[MobileAudioFix] 第${attempt}次播放失败:`, error.name, error.message);
-                
-                if (attempt === retryCount) {
-                    // 根据错误类型提供友好提示
+                  if (attempt === retryCount) {
+                    // 根据错误类型提供简化提示
                     if (error.name === 'NotAllowedError') {
-                        const message = this.isWeChatOrQQBrowser() 
-                            ? '微信/QQ浏览器需要先点击页面激活音频' 
-                            : '浏览器阻止了音频播放，请先点击页面';
-                        throw new Error(message);
+                        throw new Error('音频播放被阻止');
                     } else if (error.name === 'AbortError') {
                         // AbortError 在移动端可能是正常现象，不算严重错误
                         console.warn('[MobileAudioFix] 播放被中断，可能是正常情况');
@@ -307,18 +290,11 @@ const MobileAudioFix = {
             this.isAudioEnabled = true;
             return true;
         }
-        
-        console.log('[MobileAudioFix] 请求按需解锁音频');
+          console.log('[MobileAudioFix] 请求按需解锁音频');
         
         return new Promise((resolve) => {
-            const message = this.isWeChatOrQQBrowser() 
-                ? '🎵 请点击"确定"激活音频播放' 
-                : '🎵 点击确定激活音频功能';
-                
-            // 显示提示
-            if (typeof window.showMessage === 'function') {
-                window.showMessage(message, 8000);
-            }
+            // 按需解锁提示已删除 - 静默等待用户交互
+            console.log('[MobileAudioFix] 静默等待用户交互解锁音频');
             
             // 简化的解锁处理器
             const unlockHandler = async (event) => {
@@ -331,17 +307,15 @@ const MobileAudioFix = {
                     if (this.audioContext && this.audioContext.state === 'suspended') {
                         await this.audioContext.resume();
                     }
-                    
-                    // 标记为已启用
+                      // 标记为已启用
                     this.isAudioEnabled = true;
                     
                     // 移除监听器
                     document.removeEventListener('click', unlockHandler, true);
                     document.removeEventListener('touchstart', unlockHandler, true);
                     
-                    if (typeof window.showMessage === 'function') {
-                        window.showMessage('✅ 音频已激活', 1500);
-                    }
+                    // 音频激活成功提示已删除 - 静默处理
+                    console.log('[MobileAudioFix] 音频已激活');
                     
                     resolve(true);
                 } catch (error) {
