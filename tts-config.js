@@ -1,6 +1,32 @@
 // SpeakCards TTS配置文件
 // TTS Configuration for SpeakCards
 
+// 检测部署环境
+const isOnlineDeployment = window.location.protocol === 'https:' || 
+                          window.location.hostname !== 'localhost' && 
+                          window.location.hostname !== '127.0.0.1';
+
+// 在线部署模式配置
+const ONLINE_TTS_CONFIG = {
+    useWebSpeechAPI: true,
+    baiduTTSEnabled: false,
+    elevenLabsEnabled: false,
+    // Web Speech API 语音设置
+    webSpeechAPI: {
+        // 语音速率 (0.1 - 10)
+        rate: 0.8,
+        // 语音音调 (0 - 2)  
+        pitch: 1,
+        // 语音音量 (0 - 1)
+        volume: 0.8,
+        // 语言代码
+        languages: {
+            'zh': 'zh-CN',
+            'en': 'en-US'
+        }
+    }
+};
+
 const TTS_CONFIG = {
     // ElevenLabs 配置
     elevenlabs: {
@@ -131,13 +157,23 @@ window.TTS_CONFIG.baidu = {
   serverUrl: 'http://192.168.1.118:8000/tts' // 默认使用本机IP
 };
 
+// 根据部署环境选择TTS配置
+if (isOnlineDeployment) {
+    console.log('[TTS] 检测到在线部署环境，使用Web Speech API');
+    window.TTS_CONFIG.online = ONLINE_TTS_CONFIG;
+    window.TTS_CONFIG.useWebSpeechAPI = true;
+} else {
+    console.log('[TTS] 检测到本地开发环境，使用完整TTS服务');
+    window.TTS_CONFIG.useWebSpeechAPI = false;
+}
+
 // 导出配置 (如果在模块环境中使用)
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = TTS_CONFIG;
 }
 
 // 使用说明:
-// 1. 将您的ElevenLabs API密钥替换 'YOUR_FREE_API_KEY'
-// 2. 可以根据需要调整语音参数
-// 3. 可以添加或移除首选语音列表中的选项
+// 1. 在线部署时自动使用浏览器内置Web Speech API
+// 2. 本地开发时使用完整的百度TTS和ElevenLabs服务
+// 3. 可以根据需要调整语音参数
 // 4. 保存文件后刷新页面生效

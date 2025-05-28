@@ -1,0 +1,41 @@
+{
+  "name": "SpeakCards - 智能单词卡片",
+  "short_name": "SpeakCards",
+  "description": "智能单词卡片学习应用，支持语音播放和自适应学习",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#ffffff",
+  "theme_color": "#667eea",
+  "lang": "zh-CN",
+  "icons": [
+    {
+      "src": "LOGO.ico",
+      "sizes": "32x32",
+      "type": "image/x-icon",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "LOGO.jpeg",
+      "sizes": "192x192",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["education", "productivity"],
+  "shortcuts": [
+    {
+      "name": "开始学习",
+      "short_name": "学习",
+      "description": "开始单词卡片学习",
+      "url": "/",
+      "icons": [
+        {
+          "src": "LOGO.ico",
+          "sizes": "32x32"
+        }
+      ]
+    }
+  ]
+}

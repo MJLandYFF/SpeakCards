@@ -2,8 +2,21 @@
 <html lang="zh">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SpeakCards</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>SpeakCards - 智能单词卡片</title>
+    <meta name="description" content="智能单词卡片学习应用，支持语音播放和自适应学习">
+    <meta name="keywords" content="单词卡片,英语学习,语音播放,智能学习">
+    <meta name="author" content="SpeakCards">
+    
+    <!-- PWA配置 -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#667eea">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="SpeakCards">
+    <link rel="apple-touch-icon" href="LOGO.jpeg">
+    
+    <!-- 样式和图标 -->
     <link rel="stylesheet" href="style.css">
     <link rel="icon" href="LOGO.ico" type="image/x-icon">
     <script src="https://cdn.tailwindcss.com"></script>
@@ -83,5 +96,29 @@
         </div>
       </div>
     </div>
+    
+    <!-- PWA Service Worker 注册 -->
+    <script>
+        // 注册Service Worker (PWA支持)
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', function() {
+                navigator.serviceWorker.register('/sw.js')
+                .then(function(registration) {
+                    console.log('[PWA] Service Worker 注册成功:', registration.scope);
+                })
+                .catch(function(error) {
+                    console.log('[PWA] Service Worker 注册失败:', error);
+                });
+            });
+        }
+        
+        // 检测安装提示
+        let deferredPrompt;
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            console.log('[PWA] 应用可以安装到主屏幕');
+        });
+    </script>
 </body>
 </html>
