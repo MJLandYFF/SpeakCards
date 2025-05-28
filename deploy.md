@@ -6,19 +6,19 @@
 
 1. **GitHub仓库设置**
    ```bash
-   git remote add origin https://github.com/yangfeifan/SpeakCards.git
+   git remote add origin https://github.com/MJLandYFF/SpeakCards.git
    git push -u origin master
    ```
 
 2. **启用GitHub Pages**
    - 进入GitHub仓库 Settings → Pages
    - Source选择 "Deploy from a branch"
-   - Branch选择 "master"
+   - Branch选择 "gh-pages"
    - Folder选择 "/ (root)"
    - 保存设置
 
 3. **访问地址**
-   - 主页面：`https://yangfeifan.github.io/SpeakCards/`
+   - 主页面：`https://mjlandyff.github.io/SpeakCards/`
    - 直接使用index.html作为入口
 
 ### 方案二：Vercel部署（更快速）
