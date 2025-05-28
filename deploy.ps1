@@ -16,6 +16,13 @@ if ($status) {
 Write-Host "📤 推送代码到 GitHub..." -ForegroundColor Blue
 git push origin master --tags
 
+# 更新 gh-pages 分支
+Write-Host "🔄 更新 gh-pages 分支..." -ForegroundColor Blue
+git checkout gh-pages
+git merge master
+git push origin gh-pages
+git checkout master
+
 if ($LASTEXITCODE -eq 0) {
     Write-Host "✅ 代码推送完成！" -ForegroundColor Green
     Write-Host ""
