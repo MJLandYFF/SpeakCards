@@ -775,7 +775,27 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
-// 渲染闪卡主函数，使用高效的批量渲染方式
+// 虚拟滚动配置
+const VIRTUAL_SCROLL_CONFIG = {
+    initialRenderCount: 30,    // 首次渲染的卡片数量
+    renderBatchSize: 10,       // 每次滚动渲染的批次大小
+    scrollThreshold: 200,      // 距离底部多少像素时开始渲染新内容
+    renderDelay: 16,           // 渲染延迟（毫秒）避免阻塞主线程
+    maxConcurrentRender: 5     // 最大并发渲染数量
+};
+
+// 当前渲染状态
+let currentRenderState = {
+    renderedCount: 0,          // 已渲染的卡片数量
+    totalCount: 0,             // 总卡片数量
+    data: [],                  // 数据源
+    category: '全部',          // 当前分类
+    isRendering: false,        // 是否正在渲染
+    renderQueue: [],           // 渲染队列
+    scrollContainer: null      // 滚动容器
+};
+
+// 渲染闪卡主函数，使用虚拟滚动优化性能
 function renderFlashcards(category = '全部') {
     const grid = document.getElementById('flashcardGrid');
     if (!grid) return;
@@ -792,6 +812,15 @@ function renderFlashcards(category = '全部') {
         document.getElementById('flashcardGridMessage').style.display = 'block';
         document.getElementById('flashcardGridMessage').textContent = '本类别下暂无单词。';
         grid.innerHTML = '';
+        currentRenderState = { 
+            renderedCount: 0, 
+            totalCount: 0, 
+            data: [], 
+            category, 
+            isRendering: false, 
+            renderQueue: [],
+            scrollContainer: null 
+        };
         return;
     } else {
         document.getElementById('flashcardGridMessage').style.display = 'none';
@@ -812,41 +841,199 @@ function renderFlashcards(category = '全部') {
         }
     });
 
-    // 使用innerHTML批量渲染，性能更优
+    // 更新渲染状态
+    currentRenderState = {
+        renderedCount: 0,
+        totalCount: data.length,
+        data,
+        category,
+        isRendering: false,
+        renderQueue: [],
+        scrollContainer: window
+    };
+
+    // 清空网格
+    grid.innerHTML = '';
+
+    // 首次渲染初始数量的卡片
+    const initialCount = Math.min(VIRTUAL_SCROLL_CONFIG.initialRenderCount, data.length);
+    renderMoreCards(initialCount);
+
+    // 设置滚动监听器
+    setupScrollListener();
+}
+
+// 渲染更多卡片（增量渲染）
+async function renderMoreCards(count) {
+    if (currentRenderState.isRendering) {
+        console.log('[SpeakCards] 正在渲染中，跳过请求');
+        return;
+    }
+    
+    if (currentRenderState.renderedCount >= currentRenderState.totalCount) {
+        console.log('[SpeakCards] 所有卡片已渲染完成');
+        return;
+    }
+    
+    currentRenderState.isRendering = true;
+    const { data, renderedCount } = currentRenderState;
+    const grid = document.getElementById('flashcardGrid');
     const masteredWords = userProgress.masteredWords || [];
-    const cardsHTML = data.map((wordObj, idx) => {
-        const isMastered = masteredWords.includes(wordObj.id);
-        const masteredClass = isMastered ? 'is-mastered' : '';
-        const masterBtnText = isMastered ? '已掌握' : '标记为已掌握';
+    
+    console.log(`[SpeakCards] 渲染更多卡片: ${renderedCount} -> ${Math.min(renderedCount + count, data.length)}`);
+    
+    try {
+        // 计算要渲染的卡片范围
+        const startIndex = renderedCount;
+        const endIndex = Math.min(startIndex + count, data.length);
+        const cardsToRender = data.slice(startIndex, endIndex);
         
-        return `
-            <div class="flashcard-container ${masteredClass}" data-word-id="${wordObj.id}" data-word="${escapeHtml(wordObj.word)}" data-lang="${wordObj.lang || 'en'}">
-                <div class="flashcard">
-                    <div class="flashcard-front">
-                        <div class="word">${escapeHtml(wordObj.word)}</div>
-                        <div class="pronunciation">${escapeHtml(wordObj.pronunciation || '')}</div>
-                        <button class="speak-btn simple-button" title="发音">🔊</button>
-                        <button class="master-button simple-button">${masterBtnText}</button>
-                        <div class="card-index">${idx + 1}</div>
-                    </div>
-                    <div class="flashcard-back">
-                        <div class="chinese-translation">${escapeHtml(wordObj.chinese)}</div>
-                        <div class="card-index">${idx + 1}</div>
-                    </div>
+        // 分批渲染避免阻塞主线程
+        const batchSize = VIRTUAL_SCROLL_CONFIG.maxConcurrentRender;
+        let cardsHTML = '';
+        
+        for (let i = 0; i < cardsToRender.length; i += batchSize) {
+            const batch = cardsToRender.slice(i, i + batchSize);
+            
+            const batchHTML = batch.map((wordObj, batchIdx) => {
+                const globalIdx = startIndex + i + batchIdx;
+                const isMastered = masteredWords.includes(wordObj.id);
+                const masteredClass = isMastered ? 'is-mastered' : '';
+                const masterBtnText = isMastered ? '已掌握' : '标记为已掌握';
+                
+                return createCardHTML(wordObj, globalIdx, masteredClass, masterBtnText);
+            }).join('');
+            
+            cardsHTML += batchHTML;
+            
+            // 小延迟避免阻塞主线程
+            if (i + batchSize < cardsToRender.length) {
+                await new Promise(resolve => setTimeout(resolve, VIRTUAL_SCROLL_CONFIG.renderDelay));
+            }
+        }
+        
+        // 追加到现有内容
+        grid.insertAdjacentHTML('beforeend', cardsHTML);
+        
+        // 更新渲染状态
+        currentRenderState.renderedCount = endIndex;
+        
+        // 如果是首次渲染，设置事件委托
+        if (startIndex === 0) {
+            setupEventDelegation(grid);
+        }
+        
+        console.log(`[SpeakCards] 已渲染 ${currentRenderState.renderedCount}/${currentRenderState.totalCount} 个卡片`);
+        
+        // 移动端音频状态检查
+        if (window.MobileAudioFix && window.MobileAudioFix.isMobileDevice() && startIndex === 0) {
+            setTimeout(() => {
+                if (!window.MobileAudioFix.isAudioEnabled) {
+                    console.log('[SpeakCards] 首次渲染完成，提醒用户激活音频');
+                    if (typeof showMessage === 'function') {
+                        showMessage('🎵 点击页面激活音频播放', 3000);
+                    }
+                }
+            }, 100);
+        }
+        
+    } catch (error) {
+        console.error('[SpeakCards] 渲染卡片失败:', error);
+        showMessage('卡片加载失败，请刷新重试', 3000);
+    } finally {
+        currentRenderState.isRendering = false;
+    }
+}
+
+// 设置滚动监听器
+function setupScrollListener() {
+    // 移除旧的监听器
+    if (currentRenderState.scrollHandler) {
+        window.removeEventListener('scroll', currentRenderState.scrollHandler);
+    }
+    
+    // 创建新的滚动处理函数
+    currentRenderState.scrollHandler = throttle(() => {
+        // 检查是否接近页面底部
+        const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+        const windowHeight = window.innerHeight;
+        const documentHeight = document.documentElement.scrollHeight;
+        
+        const distanceFromBottom = documentHeight - (scrollTop + windowHeight);
+        
+        // 如果距离底部小于阈值，且还有未渲染的内容
+        if (distanceFromBottom < VIRTUAL_SCROLL_CONFIG.scrollThreshold && 
+            currentRenderState.renderedCount < currentRenderState.totalCount &&
+            !currentRenderState.isRendering) {
+            
+            console.log(`[SpeakCards] 滚动触发渲染，距离底部: ${distanceFromBottom}px`);
+            renderMoreCards(VIRTUAL_SCROLL_CONFIG.renderBatchSize);
+        }
+    }, 100); // 100ms 节流
+    
+    // 添加新的监听器
+    window.addEventListener('scroll', currentRenderState.scrollHandler, { passive: true });
+}
+
+// 节流函数
+function throttle(func, wait) {
+    let timeout;
+    let previous = 0;
+    
+    return function executedFunction(...args) {
+        const now = Date.now();
+        
+        if (!previous) previous = now;
+        
+        const remaining = wait - (now - previous);
+        
+        if (remaining <= 0 || remaining > wait) {
+            if (timeout) {
+                clearTimeout(timeout);
+                timeout = null;
+            }
+            
+            previous = now;
+            func.apply(this, args);
+        } else if (!timeout) {
+            timeout = setTimeout(() => {
+                previous = Date.now();
+                timeout = null;
+                func.apply(this, args);
+            }, remaining);
+        }
+    };
+}
+
+// 创建单个卡片HTML
+function createCardHTML(wordObj, idx, masteredClass, masterBtnText) {
+    return `
+        <div class="flashcard-container ${masteredClass}" data-word-id="${wordObj.id}" data-word="${escapeHtml(wordObj.word)}" data-lang="${wordObj.lang || 'en'}">
+            <div class="flashcard">
+                <div class="flashcard-front">
+                    <div class="word">${escapeHtml(wordObj.word)}</div>
+                    <div class="pronunciation">${escapeHtml(wordObj.pronunciation || '')}</div>
+                    <button class="speak-btn simple-button" title="发音">🔊</button>
+                    <button class="master-button simple-button">${masterBtnText}</button>
+                    <div class="card-index">${idx + 1}</div>
+                </div>
+                <div class="flashcard-back">
+                    <div class="chinese-translation">${escapeHtml(wordObj.chinese)}</div>
+                    <div class="card-index">${idx + 1}</div>
                 </div>
             </div>
-        `;
-    }).join('');
+        </div>
+    `;
+}
 
-    // 一次性更新DOM
-    grid.innerHTML = cardsHTML;
-
-    // 使用事件委托处理所有卡片事件，避免为每个卡片单独绑定事件
-    grid.removeEventListener('click', handleGridClick); // 移除旧的监听器
+// 设置事件委托
+function setupEventDelegation(grid) {
+    // 移除旧的监听器避免重复绑定
+    grid.removeEventListener('click', handleGridClick);
     grid.addEventListener('click', handleGridClick);
 }
 
-// 事件委托处理函数
+// 事件委托处理函数 - 优化音频播放响应速度
 function handleGridClick(e) {
     const cardContainer = e.target.closest('.flashcard-container');
     if (!cardContainer) return;
@@ -856,10 +1043,28 @@ function handleGridClick(e) {
     const lang = cardContainer.getAttribute('data-lang');
     const card = cardContainer.querySelector('.flashcard');
 
-    // 处理发音按钮点击
+    // 处理发音按钮点击 - 优化移动端响应
     if (e.target.closest('.speak-btn')) {
         e.stopPropagation();
-        speakText(word, lang);
+        
+        // 移动端音频播放优化：立即反馈 + 异步处理
+        const speakBtn = e.target.closest('.speak-btn');
+        const originalText = speakBtn.textContent;
+        
+        // 立即视觉反馈
+        speakBtn.textContent = '🔄';
+        speakBtn.style.transform = 'scale(0.9)';
+        
+        // 异步播放音频，避免阻塞UI
+        const idleCallback = window.requestIdleCallback || ((cb) => setTimeout(cb, 16));
+        idleCallback(() => {
+            speakTextOptimized(word, lang).finally(() => {
+                // 恢复按钮状态
+                speakBtn.textContent = originalText;
+                speakBtn.style.transform = 'scale(1)';
+            });
+        });
+        
         return;
     }
 
@@ -876,8 +1081,142 @@ function handleGridClick(e) {
     }
 }
 
-// 智能发音主入口，自动选择TTS方案
+// 优化的音频播放函数 - 专为移动端响应速度设计
+async function speakTextOptimized(text, lang = 'en') {
+    if (!text) return false;
+    
+    try {
+        // 移动端快速预检查
+        if (window.MobileAudioFix && window.MobileAudioFix.isMobileDevice()) {
+            console.log('[SpeakTextOptimized] 移动端检测，快速路径');
+            
+            // 快速检查音频状态，避免阻塞
+            if (!window.MobileAudioFix.isAudioEnabled) {
+                // 异步尝试激活，不阻塞用户操作
+                const activationPromise = window.MobileAudioFix.unlockAudioOnDemand();
+                
+                // 给用户即时反馈
+                if (typeof showMessage === 'function') {
+                    showMessage('🎵 正在激活音频...', 2000);
+                }
+                
+                const activated = await Promise.race([
+                    activationPromise,
+                    new Promise(resolve => setTimeout(() => resolve(false), 1000)) // 1秒超时
+                ]);
+                
+                if (!activated) {
+                    if (typeof showMessage === 'function') {
+                        showMessage('⚠️ 请点击页面激活音频', 2000);
+                    }
+                    return false;
+                }
+            }
+        }
+
+        // 选择语音参数
+        let voicePref = window.selectedVoiceOption || 'default';
+        let ttsLang = lang;
+        if (voicePref === 'male') ttsLang = 'en-US-male';
+        if (voicePref === 'female') ttsLang = 'en-US-female';
+
+        // 高性能语音播放策略
+        const audioPromises = [];
+
+        // 策略1：增强浏览器TTS（最快）
+        if (window.TTSWithCache && TTSWithCache.playEnhancedBrowserTTS) {
+            audioPromises.push(
+                TTSWithCache.playEnhancedBrowserTTS(text, ttsLang, true)
+                    .then(success => ({ method: 'Enhanced Browser TTS', success }))
+                    .catch(() => ({ method: 'Enhanced Browser TTS', success: false }))
+            );
+        }
+
+        // 策略2：百度TTS（移动端优化）
+        if (typeof playBaiduTTS === 'function') {
+            audioPromises.push(
+                playBaiduTTS(text, voicePref === 'male' ? 'male' : 'female', true)
+                    .then(success => ({ method: 'Baidu TTS', success }))
+                    .catch(() => ({ method: 'Baidu TTS', success: false }))
+            );
+        }
+
+        // 策略3：浏览器原生TTS（兜底）
+        if (typeof speechSynthesis !== 'undefined') {
+            audioPromises.push(
+                new Promise((resolve) => {
+                    try {
+                        const utter = new SpeechSynthesisUtterance(text);
+                        utter.lang = lang === 'zh' ? 'zh-CN' : 'en-US';
+                        utter.rate = 0.9; // 稍慢一点，更清晰
+                        
+                        let completed = false;
+                        
+                        utter.onend = () => {
+                            completed = true;
+                            resolve({ method: 'Speech Synthesis', success: true });
+                        };
+                        
+                        utter.onerror = (e) => {
+                            console.warn('SpeechSynthesis error:', e);
+                            if (!completed) {
+                                resolve({ method: 'Speech Synthesis', success: false });
+                            }
+                        };
+                        
+                        speechSynthesis.speak(utter);
+                        
+                        // 超时处理
+                        setTimeout(() => {
+                            if (!completed) {
+                                speechSynthesis.cancel();
+                                resolve({ method: 'Speech Synthesis', success: false });
+                            }
+                        }, 5000);
+                        
+                    } catch (e) {
+                        resolve({ method: 'Speech Synthesis', success: false });
+                    }
+                })
+            );
+        }
+
+        // 并发尝试，使用第一个成功的结果
+        if (audioPromises.length > 0) {
+            console.log(`[SpeakTextOptimized] 并发尝试 ${audioPromises.length} 种TTS方案`);
+            
+            const results = await Promise.allSettled(audioPromises);
+            const successResult = results.find(r => r.status === 'fulfilled' && r.value.success);
+            
+            if (successResult) {
+                console.log(`[SpeakTextOptimized] 播放成功:`, successResult.value.method);
+                return true;
+            }
+        }
+
+        // 所有策略都失败
+        console.warn('[SpeakTextOptimized] 所有TTS方案都失败');
+        if (typeof showMessage === 'function') {
+            showMessage('🔇 暂时无法播放语音', 2000);
+        }
+        return false;
+        
+    } catch (err) {
+        console.error('[SpeakTextOptimized] 播放异常:', err);
+        if (typeof showMessage === 'function') {
+            showMessage('🔇 语音播放出错', 2000);
+        }
+        return false;
+    }
+}
+
+// 保持原有speakText函数的兼容性
 async function speakText(text, lang = 'en') {
+    // 优先使用优化版本
+    const success = await speakTextOptimized(text, lang);
+    if (success) return;
+    
+    // 兜底使用原有逻辑（简化版）
     if (!text) return;
     
     try {

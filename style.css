@@ -621,3 +621,36 @@ body, html {
     margin-bottom: 16px;
   }
 }
+
+/* 滚动加载提示样式 */
+.scroll-loading-hint {
+    text-align: center;
+    padding: 20px;
+    color: #888;
+    font-size: 14px;
+    background: rgba(255, 255, 255, 0.8);
+    border-radius: 8px;
+    margin: 16px auto;
+    max-width: 400px;
+}
+
+.scroll-loading-hint::before {
+    content: '📜 ';
+}
+
+/* 数据完成提示样式 */
+.scroll-complete-hint {
+    text-align: center;
+    padding: 20px;
+    color: #28a745;
+    font-size: 14px;
+    background: rgba(40, 167, 69, 0.1);
+    border-radius: 8px;
+    margin: 16px auto;
+    max-width: 400px;
+    border: 1px solid rgba(40, 167, 69, 0.2);
+}
+
+.scroll-complete-hint::before {
+    content: '✅ ';
+}
