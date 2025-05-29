@@ -192,8 +192,21 @@ async function loadUserProgress() {
     if (currentUser && currentUser.id) {
         let progressLoaded = false;
         
+        // 🆕 首先尝试从云端恢复数据（仅对密码登录用户）
+        if (currentUser.provider === 'password' && window.cloudSyncManager) {
+            try {
+                const cloudRestored = await window.cloudSyncManager.restoreUserData();
+                if (cloudRestored) {
+                    progressLoaded = true;
+                    console.log("Loaded progress from cloud for user:", currentUser.id);
+                }
+            } catch (e) {
+                console.log("Failed to load progress from cloud, trying other sources:", e);
+            }
+        }
+        
         // 对于密码登录用户，优先尝试从后端加载
-        if (currentUser.provider === 'password') {
+        if (!progressLoaded && currentUser.provider === 'password') {
             try {
                 const response = await fetch('/api/get-progress', {
                     method: 'POST',
@@ -288,6 +301,15 @@ async function saveUserProgress() {
                     console.error('保存进度到后端失败:', e);
                     // 后端保存失败时不显示错误消息，因为本地已经保存了
                 }
+            }
+        }
+        
+        // 🆕 云端同步：无论在线或本地环境都尝试同步到云端
+        if (window.cloudSyncManager && currentUser.provider === 'password') {
+            try {
+                await window.cloudSyncManager.syncUserData();
+            } catch (e) {
+                console.log('云端同步失败，数据已保存到本地:', e);
             }
         }
     }
@@ -752,8 +774,27 @@ function updateUserDisplay() {
             configModal.style.display = 'flex';
         }
     });
-    
-    configContainer.appendChild(configBtn);
+      configContainer.appendChild(configBtn);
+
+    // 添加云端同步按钮（仅对密码登录用户显示）
+    if (currentUser && currentUser.provider === 'password') {
+        const cloudSyncBtn = document.createElement('button');
+        cloudSyncBtn.id = 'cloudSyncBtn';
+        cloudSyncBtn.className = 'cloud-sync-button';
+        cloudSyncBtn.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"></path>
+            </svg>
+            <span>云端同步</span>
+        `;
+        
+        // 绑定云端同步按钮点击事件
+        cloudSyncBtn.addEventListener('click', function() {
+            showCloudSyncModal();
+        });
+        
+        configContainer.appendChild(cloudSyncBtn);
+    }
 
     // 将两个容器添加到userActionsContainer
     userActionsContainer.appendChild(userInfoContainer);
@@ -1856,15 +1897,84 @@ function setupConfigModalEvents() {
             window.selectedScene = selectedScene;
             renderFlashcards(selectedScene);
         });
-    }
-
-    const voiceGenderSelect = document.getElementById('voiceGenderSelect');
+    }    const voiceGenderSelect = document.getElementById('voiceGenderSelect');
     if (voiceGenderSelect) {
         voiceGenderSelect.addEventListener('change', function() {            const selectedVoice = this.value;
             window.selectedVoiceOption = selectedVoice;
             alert('语音选项已更改。');
         });
     }
+
+    // 云端同步模态框事件绑定
+    setupCloudSyncModalEvents();
+}
+
+// 云端同步模态框事件绑定
+function setupCloudSyncModalEvents() {
+    // 关闭按钮
+    const cloudSyncModalCloseBtn = document.getElementById('cloudSyncModalCloseBtn');
+    if (cloudSyncModalCloseBtn) {
+        cloudSyncModalCloseBtn.addEventListener('click', function() {
+            const modal = document.getElementById('cloudSyncModal');
+            if (modal) {
+                modal.style.display = 'none';
+            }
+        });
+    }
+
+    // 取消按钮
+    const cloudSyncModalCancelBtn = document.getElementById('cloudSyncModalCancelBtn');
+    if (cloudSyncModalCancelBtn) {
+        cloudSyncModalCancelBtn.addEventListener('click', function() {
+            const modal = document.getElementById('cloudSyncModal');
+            if (modal) {
+                modal.style.display = 'none';
+            }
+        });
+    }
+
+    // 保存配置按钮
+    const cloudSyncModalOkBtn = document.getElementById('cloudSyncModalOkBtn');
+    if (cloudSyncModalOkBtn) {
+        cloudSyncModalOkBtn.addEventListener('click', function() {
+            saveCloudSyncConfig();
+            const modal = document.getElementById('cloudSyncModal');
+            if (modal) {
+                modal.style.display = 'none';
+            }
+        });
+    }
+
+    // 点击模态框外部关闭
+    const cloudSyncModal = document.getElementById('cloudSyncModal');
+    if (cloudSyncModal) {
+        cloudSyncModal.addEventListener('click', function(e) {
+            if (e.target === this) {
+                this.style.display = 'none';
+            }
+        });
+    }
+
+    // 立即同步按钮
+    const manualSyncBtn = document.getElementById('manualSyncBtn');
+    if (manualSyncBtn) {
+        manualSyncBtn.addEventListener('click', performManualSync);
+    }
+
+    // 从云端恢复按钮
+    const restoreFromCloudBtn = document.getElementById('restoreFromCloudBtn');
+    if (restoreFromCloudBtn) {
+        restoreFromCloudBtn.addEventListener('click', restoreFromCloud);
+    }
+
+    // 清除云端数据按钮
+    const clearCloudDataBtn = document.getElementById('clearCloudDataBtn');
+    if (clearCloudDataBtn) {
+        clearCloudDataBtn.addEventListener('click', clearCloudData);
+    }
+    
+    // 初始化动态配置表单
+    setupDynamicCloudForm();
 }
 
 // 填充分类下拉框
@@ -1921,4 +2031,367 @@ function syncConfigToModal() {
     });
 }
 
-// 移动端音频状态指示器函数已删除 - 用户要求移除顶部音频激活按钮
+// 云端同步模态框相关函数
+function showCloudSyncModal() {
+    const modal = document.getElementById('cloudSyncModal');
+    if (!modal) return;
+
+    // 更新同步状态显示
+    updateCloudSyncStatus();
+    
+    // 加载当前配置
+    loadCloudSyncConfig();
+    
+    modal.style.display = 'flex';
+}
+
+function updateCloudSyncStatus() {
+    if (!window.cloudSyncManager) return;
+
+    const status = window.cloudSyncManager.getSyncStatus();
+    
+    // 更新网络状态
+    const networkStatus = document.getElementById('networkStatus');
+    if (networkStatus) {
+        networkStatus.textContent = status.isOnline ? '已连接' : '离线';
+        networkStatus.className = `status-value ${status.isOnline ? 'online' : 'offline'}`;
+    }
+    
+    // 更新最后同步时间
+    const lastSyncTime = document.getElementById('lastSyncTime');
+    if (lastSyncTime) {
+        if (status.lastSyncTime && status.lastSyncTime > 0) {
+            const date = new Date(status.lastSyncTime);
+            lastSyncTime.textContent = date.toLocaleString('zh-CN');
+        } else {
+            lastSyncTime.textContent = '从未同步';
+        }
+    }
+    
+    // 更新待同步项目数量
+    const syncQueueLength = document.getElementById('syncQueueLength');
+    if (syncQueueLength) {
+        syncQueueLength.textContent = status.queueLength.toString();
+    }
+}
+
+function loadCloudSyncConfig() {
+    if (!window.cloudSyncManager) return;
+
+    const config = window.cloudSyncManager.config;
+    
+    // 设置云端服务提供商
+    const providerSelect = document.getElementById('cloudProviderSelect');
+    if (providerSelect && config.provider) {
+        providerSelect.value = config.provider;
+    }
+    
+    // 设置数据冲突处理方式
+    const conflictSelect = document.getElementById('conflictResolution');
+    if (conflictSelect && config.conflictResolution) {
+        conflictSelect.value = config.conflictResolution;
+    }
+    
+    // 对于又拍云，预填入默认配置
+    if (config.provider === 'upyun') {
+        const upyunBucketInput = document.getElementById('upyunBucket');
+        const upyunOperatorInput = document.getElementById('upyunOperator');
+        
+        if (upyunBucketInput && config.bucketName) {
+            upyunBucketInput.value = config.bucketName;
+        }
+        if (upyunOperatorInput && config.operatorName) {
+            upyunOperatorInput.value = config.operatorName;
+        }
+    }
+    
+    // API密钥不显示，保护隐私
+    const apiKeyInput = document.getElementById('cloudApiKey');
+    if (apiKeyInput) {
+        apiKeyInput.value = '';
+        apiKeyInput.placeholder = config.apiKey ? '已设置密钥' : '输入您的API密钥';
+    }
+}
+
+function saveCloudSyncConfig() {
+    if (!window.cloudSyncManager) return;
+
+    const providerSelect = document.getElementById('cloudProviderSelect');
+    const apiKeyInput = document.getElementById('cloudApiKey');
+    const conflictSelect = document.getElementById('conflictResolution');
+    
+    const provider = providerSelect ? providerSelect.value : 'jsonbin';
+    const apiKey = apiKeyInput ? apiKeyInput.value.trim() : '';
+    const conflictResolution = conflictSelect ? conflictSelect.value : 'merge';
+    
+    // 获取特定服务的配置
+    let specificConfig = {};
+    
+    switch (provider) {
+        case 'upyun':
+            specificConfig = {
+                bucketName: document.getElementById('upyunBucket')?.value || 'speakcards',
+                operatorName: document.getElementById('upyunOperator')?.value || '',
+                operatorPassword: apiKey
+            };
+            break;
+            
+        case 'qiniu':
+            specificConfig = {
+                bucket: document.getElementById('qiniuBucket')?.value || 'speakcards',
+                accessKey: document.getElementById('qiniuAccessKey')?.value || '',
+                secretKey: apiKey,
+                domain: document.getElementById('qiniuDomain')?.value || ''
+            };
+            break;
+            
+        case 'tencent':
+            specificConfig = {
+                bucket: document.getElementById('tencentBucket')?.value || 'speakcards',
+                region: document.getElementById('tencentRegion')?.value || 'ap-beijing',
+                secretId: document.getElementById('tencentSecretId')?.value || '',
+                secretKey: apiKey
+            };
+            break;
+            
+        case 'leancloud':
+            specificConfig = {
+                appId: document.getElementById('leancloudAppId')?.value || '',
+                appKey: apiKey,
+                serverURL: document.getElementById('leancloudServerURL')?.value || ''
+            };
+            break;
+            
+        default:
+            specificConfig = {
+                apiKey: apiKey || window.cloudSyncManager.config.apiKey
+            };
+            break;
+    }
+    
+    // 配置云端同步
+    const success = window.cloudSyncManager.configureCloudSync(provider, apiKey, {
+        conflictResolution: conflictResolution,
+        ...specificConfig
+    });
+    
+    if (success) {
+        showMessage('☁️ 云端同步配置已保存', 2000, 'success');
+    } else {
+        showMessage('❌ 配置保存失败', 3000, 'error');
+    }
+}
+
+// 云端同步配置动态表单处理
+function setupDynamicCloudForm() {
+    const providerSelect = document.getElementById('cloudProviderSelect');
+    const apiKeyGroup = document.querySelector('#cloudApiKey').closest('.form-group');
+    
+    if (!providerSelect || !apiKeyGroup) return;
+    
+    // 创建动态配置区域
+    let dynamicConfigDiv = document.getElementById('dynamicCloudConfig');
+    if (!dynamicConfigDiv) {
+        dynamicConfigDiv = document.createElement('div');
+        dynamicConfigDiv.id = 'dynamicCloudConfig';
+        dynamicConfigDiv.className = 'dynamic-config-section';
+        apiKeyGroup.parentNode.insertBefore(dynamicConfigDiv, apiKeyGroup.nextSibling);
+    }
+    
+    function updateConfigForm() {
+        const provider = providerSelect.value;
+        const apiKeyInput = document.getElementById('cloudApiKey');
+        
+        // 清空动态配置区域
+        dynamicConfigDiv.innerHTML = '';
+        
+        // 根据选择的提供商显示相应的配置字段
+        switch (provider) {
+            case 'upyun':
+                apiKeyInput.placeholder = '操作员密码';
+                dynamicConfigDiv.innerHTML = `
+                    <div class="form-group">
+                        <label for="upyunBucket">存储服务名称:</label>
+                        <input type="text" id="upyunBucket" placeholder="输入又拍云存储服务名称">
+                    </div>
+                    <div class="form-group">
+                        <label for="upyunOperator">操作员用户名:</label>
+                        <input type="text" id="upyunOperator" placeholder="输入操作员用户名">
+                    </div>
+                `;
+                break;
+                
+            case 'qiniu':
+                apiKeyInput.placeholder = 'SecretKey';
+                dynamicConfigDiv.innerHTML = `
+                    <div class="form-group">
+                        <label for="qiniuBucket">存储空间名称:</label>
+                        <input type="text" id="qiniuBucket" placeholder="输入七牛云存储空间名称">
+                    </div>
+                    <div class="form-group">
+                        <label for="qiniuAccessKey">AccessKey:</label>
+                        <input type="text" id="qiniuAccessKey" placeholder="输入AccessKey">
+                    </div>
+                    <div class="form-group">
+                        <label for="qiniuDomain">存储空间域名:</label>
+                        <input type="text" id="qiniuDomain" placeholder="输入绑定的域名">
+                    </div>
+                `;
+                break;
+                
+            case 'tencent':
+                apiKeyInput.placeholder = 'SecretKey';
+                dynamicConfigDiv.innerHTML = `
+                    <div class="form-group">
+                        <label for="tencentBucket">存储桶名称:</label>
+                        <input type="text" id="tencentBucket" placeholder="输入腾讯云存储桶名称">
+                    </div>
+                    <div class="form-group">
+                        <label for="tencentSecretId">SecretId:</label>
+                        <input type="text" id="tencentSecretId" placeholder="输入SecretId">
+                    </div>
+                    <div class="form-group">
+                        <label for="tencentRegion">地域:</label>
+                        <select id="tencentRegion">
+                            <option value="ap-beijing">北京</option>
+                            <option value="ap-shanghai">上海</option>
+                            <option value="ap-guangzhou">广州</option>
+                            <option value="ap-chengdu">成都</option>
+                        </select>
+                    </div>
+                `;
+                break;
+                
+            case 'leancloud':
+                apiKeyInput.placeholder = 'App Key';
+                dynamicConfigDiv.innerHTML = `
+                    <div class="form-group">
+                        <label for="leancloudAppId">App ID:</label>
+                        <input type="text" id="leancloudAppId" placeholder="输入LeanCloud App ID">
+                    </div>
+                    <div class="form-group">
+                        <label for="leancloudServerURL">服务器地址 (可选):</label>
+                        <input type="text" id="leancloudServerURL" placeholder="默认使用官方地址">
+                    </div>
+                `;
+                break;
+                
+            default:
+                apiKeyInput.placeholder = '输入您的API密钥';
+                break;
+        }
+    }
+    
+    // 监听服务提供商变化
+    providerSelect.addEventListener('change', updateConfigForm);
+    
+    // 初始化表单
+    updateConfigForm();
+}
+
+// 云端同步相关函数
+async function performManualSync() {
+    if (!window.cloudSyncManager || !currentUser) {
+        showMessage('⚠️ 请先登录并配置云端同步', 3000, 'warning');
+        return;
+    }
+
+    const syncBtn = document.getElementById('manualSyncBtn');
+    if (syncBtn) {
+        syncBtn.disabled = true;
+        syncBtn.textContent = '同步中...';
+    }
+
+    try {
+        const success = await window.cloudSyncManager.syncUserData(true);
+        if (success) {
+            updateCloudSyncStatus(); // 更新状态显示
+            showMessage('☁️ 数据同步成功', 2000, 'success');
+        } else {
+            showMessage('⚠️ 数据同步失败', 3000, 'warning');
+        }
+    } catch (error) {
+        console.error('手动同步失败:', error);
+        showMessage('❌ 同步过程中发生错误', 3000, 'error');
+    } finally {
+        if (syncBtn) {
+            syncBtn.disabled = false;
+            syncBtn.innerHTML = `
+                ☁️ 立即同步
+            `;
+        }
+    }
+}
+
+async function restoreFromCloud() {
+    if (!window.cloudSyncManager || !currentUser) {
+        showMessage('⚠️ 请先登录并配置云端同步', 3000, 'warning');
+        return;
+    }
+
+    const confirmed = confirm('确定要从云端恢复数据吗？这将覆盖当前的本地数据。');
+    if (!confirmed) return;
+
+    const restoreBtn = document.getElementById('restoreFromCloudBtn');
+    if (restoreBtn) {
+        restoreBtn.disabled = true;
+        restoreBtn.textContent = '恢复中...';
+    }
+
+    try {
+        const success = await window.cloudSyncManager.restoreUserData();
+        if (success) {
+            updateCloudSyncStatus(); // 更新状态显示
+            // 刷新界面
+            if (window.renderFlashcards) {
+                window.renderFlashcards(window.categorySelect?.value || '全部');
+            }
+        }
+    } catch (error) {
+        console.error('云端恢复失败:', error);
+        showMessage('❌ 恢复过程中发生错误', 3000, 'error');
+    } finally {
+        if (restoreBtn) {
+            restoreBtn.disabled = false;
+            restoreBtn.innerHTML = `
+                📥 从云端恢复
+            `;
+        }
+    }
+}
+
+async function clearCloudData() {
+    if (!window.cloudSyncManager || !currentUser) {
+        showMessage('⚠️ 请先登录并配置云端同步', 3000, 'warning');
+        return;
+    }
+
+    const confirmed = confirm('确定要清除云端数据吗？此操作无法撤销。');
+    if (!confirmed) return;
+
+    const clearBtn = document.getElementById('clearCloudDataBtn');
+    if (clearBtn) {
+        clearBtn.disabled = true;
+        clearBtn.textContent = '清除中...';
+    }
+
+    try {
+        const success = await window.cloudSyncManager.clearCloudData();
+        if (success) {
+            updateCloudSyncStatus(); // 更新状态显示
+            showMessage('🗑️ 云端数据已清除', 2000, 'success');
+        } else {
+            showMessage('⚠️ 清除失败', 3000, 'warning');
+        }
+    } catch (error) {
+        console.error('清除云端数据失败:', error);
+        showMessage('❌ 清除过程中发生错误', 3000, 'error');
+    } finally {
+        if (clearBtn) {
+            clearBtn.disabled = false;
+            clearBtn.innerHTML = `
+                🗑️ 清除云端数据
+            `;
+        }
+    }
+}
