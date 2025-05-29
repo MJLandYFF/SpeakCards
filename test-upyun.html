@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>又拍云配置测试</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .test-container {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .status {
+            padding: 10px 15px;
+            border-radius: 6px;
+            margin: 10px 0;
+        }
+        .status.success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .status.info {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px;
+            transition: all 0.3s ease;
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        .test-data {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 15px 0;
+            font-family: monospace;
+            font-size: 14px;
+        }
+        .config-info {
+            background-color: #e3f2fd;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 15px 0;
+        }
+        .config-info h3 {
+            margin-top: 0;
+            color: #1976d2;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>又拍云配置测试</h1>
+        
+        <div class="config-info">
+            <h3>当前配置信息</h3>
+            <div id="configInfo"></div>
+        </div>
+
+        <div class="test-data">
+            <h3>测试数据</h3>
+            <div id="testData"></div>
+        </div>
+
+        <button onclick="testConnection()">测试连接</button>
+        <button onclick="testUpload()">测试上传</button>
+        <button onclick="testDownload()">测试下载</button>
+        <button onclick="runFullTest()">完整测试</button>
+
+        <div id="results"></div>
+    </div>
+
+    <script src="cloud-sync.js"></script>
+    <script>
+        // 初始化云同步管理器
+        const cloudSync = new CloudSyncManager();
+        
+        // 显示配置信息
+        function displayConfig() {
+            const config = cloudSync.config;
+            document.getElementById('configInfo').innerHTML = `
+                <strong>服务提供商:</strong> ${config.provider}<br>
+                <strong>存储桶名称:</strong> ${config.bucketName}<br>
+                <strong>操作员名称:</strong> ${config.operatorName}<br>
+                <strong>API域名:</strong> ${config.apiEndpoint}
+            `;
+        }
+
+        // 生成测试数据
+        function generateTestData() {
+            const testData = {
+                timestamp: new Date().toISOString(),
+                cards: [
+                    {
+                        id: 'test-1',
+                        frontText: '测试卡片1',
+                        backText: '这是测试卡片1的背面',
+                        tags: ['测试', '又拍云'],
+                        difficulty: 1,
+                        lastReviewed: new Date().toISOString(),
+                        reviewCount: 0
+                    },
+                    {
+                        id: 'test-2',
+                        frontText: 'Test Card 2',
+                        backText: 'This is the back of test card 2',
+                        tags: ['test', 'upyun'],
+                        difficulty: 2,
+                        lastReviewed: new Date().toISOString(),
+                        reviewCount: 1
+                    }
+                ],
+                stats: {
+                    totalCards: 2,
+                    reviewsToday: 0,
+                    streak: 1
+                }
+            };
+            
+            document.getElementById('testData').innerHTML = JSON.stringify(testData, null, 2);
+            return testData;
+        }
+
+        // 添加状态消息
+        function addStatus(message, type = 'info') {
+            const results = document.getElementById('results');
+            const status = document.createElement('div');
+            status.className = `status ${type}`;
+            status.innerHTML = `[${new Date().toLocaleTimeString()}] ${message}`;
+            results.appendChild(status);
+            results.scrollTop = results.scrollHeight;
+        }
+
+        // 测试连接
+        async function testConnection() {
+            addStatus('开始测试又拍云连接...', 'info');
+            
+            try {
+                // 尝试生成签名来测试配置
+                const testPath = '/test-connection.json';
+                const method = 'PUT';
+                const signature = cloudSync.generateUpyunSignature(method, testPath);
+                
+                addStatus(`签名生成成功: ${signature.substring(0, 20)}...`, 'success');
+                addStatus('又拍云配置验证通过', 'success');
+                
+                return true;
+            } catch (error) {
+                addStatus(`连接测试失败: ${error.message}`, 'error');
+                return false;
+            }
+        }
+
+        // 测试上传
+        async function testUpload() {
+            addStatus('开始测试数据上传...', 'info');
+            
+            try {
+                const testData = generateTestData();
+                const result = await cloudSync.uploadData(testData);
+                
+                if (result.success) {
+                    addStatus('数据上传成功!', 'success');
+                    addStatus(`上传路径: ${result.path}`, 'info');
+                } else {
+                    addStatus(`上传失败: ${result.error}`, 'error');
+                }
+                
+                return result.success;
+            } catch (error) {
+                addStatus(`上传测试异常: ${error.message}`, 'error');
+                return false;
+            }
+        }
+
+        // 测试下载
+        async function testDownload() {
+            addStatus('开始测试数据下载...', 'info');
+            
+            try {
+                const result = await cloudSync.downloadData();
+                
+                if (result.success) {
+                    addStatus('数据下载成功!', 'success');
+                    addStatus(`下载的数据包含 ${result.data.cards?.length || 0} 张卡片`, 'info');
+                    
+                    if (result.data.cards && result.data.cards.length > 0) {
+                        addStatus(`第一张卡片: ${result.data.cards[0].frontText}`, 'info');
+                    }
+                } else {
+                    addStatus(`下载失败: ${result.error}`, 'error');
+                }
+                
+                return result.success;
+            } catch (error) {
+                addStatus(`下载测试异常: ${error.message}`, 'error');
+                return false;
+            }
+        }
+
+        // 完整测试流程
+        async function runFullTest() {
+            addStatus('=== 开始完整测试流程 ===', 'info');
+            
+            // 禁用所有按钮
+            const buttons = document.querySelectorAll('button');
+            buttons.forEach(btn => btn.disabled = true);
+            
+            try {
+                // 1. 测试连接
+                const connectionOk = await testConnection();
+                if (!connectionOk) {
+                    addStatus('连接测试失败，停止后续测试', 'error');
+                    return;
+                }
+                
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                
+                // 2. 测试上传
+                const uploadOk = await testUpload();
+                if (!uploadOk) {
+                    addStatus('上传测试失败，跳过下载测试', 'error');
+                    return;
+                }
+                
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                
+                // 3. 测试下载
+                const downloadOk = await testDownload();
+                
+                if (connectionOk && uploadOk && downloadOk) {
+                    addStatus('=== 🎉 所有测试通过！又拍云配置正常工作 ===', 'success');
+                } else {
+                    addStatus('=== ⚠️ 部分测试失败，请检查配置 ===', 'error');
+                }
+                
+            } finally {
+                // 重新启用按钮
+                buttons.forEach(btn => btn.disabled = false);
+            }
+        }
+
+        // 页面加载时初始化
+        window.onload = function() {
+            displayConfig();
+            generateTestData();
+            addStatus('测试页面已加载，可以开始测试', 'info');
+        };
+    </script>
+</body>
+</html>
